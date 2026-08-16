@@ -62,7 +62,12 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
           : RefreshIndicator(
               onRefresh: _load,
               child: _rows.isEmpty
-                  ? const ListView(children: [SizedBox(height: 180), Center(child: Text('Aucune activité.'))])
+                  ? ListView(
+                      children: const [
+                        SizedBox(height: 180),
+                        Center(child: Text('Aucune activité.')),
+                      ],
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.all(12),
                       itemCount: _rows.length,
