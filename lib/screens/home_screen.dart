@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../models/animal.dart';
-import 'animal_screen.dart';
 import 'animal_form_screen.dart';
+import 'animal_screen.dart';
+import 'backup_screen.dart';
+import 'dashboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,19 +15,20 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final DatabaseHelper _database = DatabaseHelper.instance;
+  final _database = DatabaseHelper.instance;
+  final _searchController = TextEditingController();
 
-  final TextEditingController _searchController =
-      TextEditingController();
-
-  List<Animal> _animals = [];
-
+  List<Animal> _animals = const [];
   bool _loading = true;
+  String? _sex;
+  String? _status = 'Actif';
+  String? _race;
+  int? _birthYear;
 
   @override
   void initState() {
     super.initState();
-    _loadAnimals();
+    _search();
   }
 
   @override
@@ -34,322 +37,178 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _loadAnimals() async {
-    setState(() {
-      _loading = true;
-    });
-
+  Future<void> _search() async {
+    setState(() => _loading = true);
     try {
-      final animals = await _database.getAnimals();
-
+      final animals = await _database.searchAnimals(
+        _searchController.text,
+        sex: _sex,
+        race: _race,
+        status: _status,
+        birthYear: _birthYear,
+      );
       if (!mounted) return;
-
       setState(() {
         _animals = animals;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Erreur lors du chargement : $e',
-          ),
-        ),
-      );
-    }
-  }
-
-  Future<void> _searchAnimals(String value) async {
-    final query = value.trim();
-
-    if (query.isEmpty) {
-      await _loadAnimals();
-      return;
-    }
-
-    try {
-      final animals = await _database.searchAnimals(query);
-
-      if (!mounted) return;
-
-      setState(() {
-        _animals = animals;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Erreur de recherche : $e',
-          ),
-        ),
-      );
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur de recherche : $e')));
     }
   }
 
   Future<void> _openAnimal(Animal animal) async {
     if (animal.id == null) return;
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AnimalScreen(
-          animalId: animal.id!,
-        ),
-      ),
-    );
-
-    await _loadAnimals();
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => AnimalScreen(animalId: animal.id!)));
+    await _search();
   }
 
   Future<void> _addAnimal() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const AnimalFormScreen(),
-      ),
-    );
-
-    if (result == true) {
-      await _loadAnimals();
-    }
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const AnimalFormScreen()));
+    if (result == true) await _search();
   }
 
-  void _clearSearch() {
-    _searchController.clear();
-    _loadAnimals();
-
-    setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Gestion du troupeau',
-        ),
-      ),
-
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addAnimal,
-        icon: const Icon(Icons.add),
-        label: const Text('Ajouter'),
-      ),
-
-      body: Column(
-        children: [
-          _buildSearch(),
-
-          _buildAnimalCount(),
-
-          const SizedBox(height: 8),
-
-          Expanded(
-            child: _buildAnimalList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearch() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: TextField(
-        controller: _searchController,
-        onChanged: _searchAnimals,
-        keyboardType: TextInputType.text,
-        decoration: InputDecoration(
-          labelText: 'Numéro d’identification',
-          hintText: 'Exemple : 2337',
-          prefixIcon: const Icon(
-            Icons.search,
-          ),
-          suffixIcon:
-              _searchController.text.isNotEmpty
-                  ? IconButton(
-                      onPressed: _clearSearch,
-                      icon: const Icon(
-                        Icons.clear,
-                      ),
-                    )
-                  : null,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAnimalCount() {
-    final count = _animals.length;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.pets),
-          const SizedBox(width: 8),
-          Text(
-            '$count animal${count > 1 ? 'x' : ''}',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAnimalList() {
-    if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    if (_animals.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadAnimals,
-      child: ListView.builder(
-        padding: const EdgeInsets.only(
-          bottom: 100,
-        ),
-        itemCount: _animals.length,
-        itemBuilder: (context, index) {
-          final animal = _animals[index];
-
-          return _buildAnimalCard(animal);
-        },
-      ),
-    );
-  }
-
-  Widget _buildAnimalCard(Animal animal) {
-    final date = animal.dateNaissance;
-
-    final day =
-        date.day.toString().padLeft(2, '0');
-
-    final month =
-        date.month.toString().padLeft(2, '0');
-
-    return Card(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 5,
-      ),
-      child: InkWell(
-        onTap: () => _openAnimal(animal),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+  Future<void> _showFilters() async {
+    String? sex = _sex;
+    String? status = _status;
+    final raceController = TextEditingController(text: _race ?? '');
+    final yearController = TextEditingController(text: _birthYear?.toString() ?? '');
+    final apply = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              CircleAvatar(
-                radius: 28,
-                child: const Icon(
-                  Icons.pets,
-                  size: 28,
-                ),
+              DropdownButtonFormField<String?>(
+                value: sex,
+                decoration: const InputDecoration(labelText: 'Sexe'),
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('Tous')),
+                  DropdownMenuItem(value: 'Femelle', child: Text('Femelle')),
+                  DropdownMenuItem(value: 'Mâle', child: Text('Mâle')),
+                  DropdownMenuItem(value: 'Inconnu', child: Text('Inconnu')),
+                ],
+                onChanged: (value) => setSheetState(() => sex = value),
               ),
-
-              const SizedBox(width: 16),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      animal.identification,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    Text(
-                      '${animal.cornes} • Race ${animal.race}',
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    Text(
-                      'Née le $day/$month/${date.year}',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String?>(
+                value: status,
+                decoration: const InputDecoration(labelText: 'Statut'),
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('Tous')),
+                  DropdownMenuItem(value: 'Actif', child: Text('Actif')),
+                  DropdownMenuItem(value: 'Vendu', child: Text('Vendu')),
+                  DropdownMenuItem(value: 'Mort', child: Text('Mort')),
+                  DropdownMenuItem(value: 'Sorti', child: Text('Sorti')),
+                ],
+                onChanged: (value) => setSheetState(() => status = value),
               ),
-
-              const Icon(
-                Icons.chevron_right,
+              const SizedBox(height: 12),
+              TextField(controller: raceController, decoration: const InputDecoration(labelText: 'Race')),
+              const SizedBox(height: 12),
+              TextField(controller: yearController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Année de naissance')),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(child: TextButton(onPressed: () => Navigator.pop(sheetContext, false), child: const Text('Annuler'))),
+                  Expanded(child: FilledButton(onPressed: () => Navigator.pop(sheetContext, true), child: const Text('Appliquer'))),
+                ],
               ),
             ],
           ),
         ),
       ),
     );
+    if (apply == true) {
+      _sex = sex;
+      _status = status;
+      _race = raceController.text.trim().isEmpty ? null : raceController.text.trim();
+      _birthYear = int.tryParse(yearController.text.trim());
+      await _search();
+    }
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.search_off,
-              size: 70,
-              color: Colors.grey.shade400,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Gestion du troupeau'),
+        actions: [
+          IconButton(
+            tooltip: 'Tableau de bord',
+            icon: const Icon(Icons.dashboard_outlined),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DashboardScreen())),
+          ),
+          IconButton(
+            tooltip: 'Sauvegarde',
+            icon: const Icon(Icons.backup_outlined),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(onPressed: _addAnimal, icon: const Icon(Icons.add), label: const Text('Ajouter')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (_) => _search(),
+                    decoration: InputDecoration(
+                      labelText: 'Rechercher',
+                      hintText: 'Numéro, race, notes…',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(tooltip: 'Filtres', onPressed: _showFilters, icon: const Icon(Icons.tune)),
+              ],
             ),
-
-            const SizedBox(height: 16),
-
-            const Text(
-              'Aucun animal trouvé',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            Text(
-              'Vérifie le numéro d’identification.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [const Icon(Icons.pets), const SizedBox(width: 8), Text('${_animals.length} résultat(s)', style: const TextStyle(fontWeight: FontWeight.bold))]),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _animals.isEmpty
+                    ? const Center(child: Text('Aucun animal trouvé.'))
+                    : RefreshIndicator(
+                        onRefresh: _search,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 100),
+                          itemCount: _animals.length,
+                          itemBuilder: (context, index) {
+                            final animal = _animals[index];
+                            final d = animal.dateNaissance;
+                            return Card(
+                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                              child: ListTile(
+                                leading: const CircleAvatar(child: Icon(Icons.pets)),
+                                title: Text(animal.identification, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text('${animal.sexe ?? 'Inconnu'} • Race ${animal.race} • ${animal.status}\nNé(e) le ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}'),
+                                isThreeLine: true,
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => _openAnimal(animal),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+          ),
+        ],
       ),
     );
   }
