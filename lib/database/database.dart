@@ -29,11 +29,10 @@ class DatabaseHelper {
     final directory = await getApplicationDocumentsDirectory();
     final path = join(directory.path, 'gestion_troupeau.db');
     _databasePath = path;
-
     return factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 7,
+        version: 8,
         onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
@@ -58,6 +57,7 @@ class DatabaseHelper {
         date_naissance TEXT NOT NULL,
         race TEXT NOT NULL,
         sexe TEXT,
+        reproductive_role TEXT NOT NULL DEFAULT 'Inconnu',
         premier_velage TEXT,
         notes TEXT,
         mother_id INTEGER,
@@ -73,58 +73,49 @@ class DatabaseHelper {
     await _insertInitialAnimals(db);
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) await _createAnimalEventsTable(db);
-
-    if (oldVersion < 3) {
-      final names = await _animalColumnNames(db);
-      if (!names.contains('mother_id')) {
-        await db.execute('ALTER TABLE animals ADD COLUMN mother_id INTEGER');
-      }
-      if (!names.contains('father_id')) {
-        await db.execute('ALTER TABLE animals ADD COLUMN father_id INTEGER');
-      }
-      await _createV3Tables(db);
-    }
-
-    if (oldVersion < 4) {
-      final names = await _animalColumnNames(db);
-      if (!names.contains('sexe')) {
-        await db.execute('ALTER TABLE animals ADD COLUMN sexe TEXT');
-      }
-    }
-
-    if (oldVersion < 7) {
-      final names = await _animalColumnNames(db);
-      if (!names.contains('status')) {
-        await db.execute(
-          "ALTER TABLE animals ADD COLUMN status TEXT NOT NULL DEFAULT 'Actif'",
-        );
-      }
-      if (!names.contains('exit_date')) {
-        await db.execute('ALTER TABLE animals ADD COLUMN exit_date TEXT');
-      }
-      await _createAnimalEventsTable(db);
-      await _createV3Tables(db);
-    }
-  }
-
   Future<Set<Object?>> _animalColumnNames(DatabaseExecutor db) async {
     final columns = await db.rawQuery('PRAGMA table_info(animals)');
     return columns.map((column) => column['name']).toSet();
   }
 
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) await _createAnimalEventsTable(db);
+    if (oldVersion < 3) {
+      final names = await _animalColumnNames(db);
+      if (!names.contains('mother_id')) await db.execute('ALTER TABLE animals ADD COLUMN mother_id INTEGER');
+      if (!names.contains('father_id')) await db.execute('ALTER TABLE animals ADD COLUMN father_id INTEGER');
+      await _createV3Tables(db);
+    }
+    if (oldVersion < 4) {
+      final names = await _animalColumnNames(db);
+      if (!names.contains('sexe')) await db.execute('ALTER TABLE animals ADD COLUMN sexe TEXT');
+    }
+    if (oldVersion < 7) {
+      final names = await _animalColumnNames(db);
+      if (!names.contains('status')) {
+        await db.execute("ALTER TABLE animals ADD COLUMN status TEXT NOT NULL DEFAULT 'Actif'");
+      }
+      if (!names.contains('exit_date')) await db.execute('ALTER TABLE animals ADD COLUMN exit_date TEXT');
+    }
+    if (oldVersion < 8) {
+      final names = await _animalColumnNames(db);
+      if (!names.contains('reproductive_role')) {
+        await db.execute("ALTER TABLE animals ADD COLUMN reproductive_role TEXT NOT NULL DEFAULT 'Inconnu'");
+      }
+    }
+    await _createAnimalEventsTable(db);
+    await _createV3Tables(db);
+  }
+
   Future<void> _createAnimalEventsTable(Database db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS animal_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        animal_id INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        date TEXT NOT NULL,
-        description TEXT,
-        FOREIGN KEY (animal_id) REFERENCES animals (id) ON DELETE CASCADE
-      )
-    ''');
+    await db.execute('''CREATE TABLE IF NOT EXISTS animal_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      animal_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      date TEXT NOT NULL,
+      description TEXT,
+      FOREIGN KEY (animal_id) REFERENCES animals (id) ON DELETE CASCADE
+    )''');
   }
 
   Future<void> _createV3Tables(Database db) async {
@@ -174,8 +165,7 @@ class DatabaseHelper {
   }
 
   Future<List<Animal>> getAnimals({bool includeInactive = true}) async {
-    final db = await database;
-    final result = await db.query(
+    final result = await (await database).query(
       'animals',
       where: includeInactive ? null : 'status = ?',
       whereArgs: includeInactive ? null : const ['Actif'],
@@ -189,6 +179,7 @@ class DatabaseHelper {
     String? sex,
     String? race,
     String? status,
+    String? reproductiveRole,
     int? birthYear,
   }) async {
     final db = await database;
@@ -196,25 +187,18 @@ class DatabaseHelper {
     final args = <Object?>[];
     final cleaned = query.trim();
     if (cleaned.isNotEmpty) {
-      where.add('(identification LIKE ? OR race LIKE ? OR notes LIKE ?)');
-      args.addAll(['%$cleaned%', '%$cleaned%', '%$cleaned%']);
+      where.add('''(
+        identification LIKE ? OR race LIKE ? OR notes LIKE ? OR
+        mother_id IN (SELECT id FROM animals WHERE identification LIKE ?) OR
+        father_id IN (SELECT id FROM animals WHERE identification LIKE ?)
+      )''');
+      args.addAll(['%$cleaned%', '%$cleaned%', '%$cleaned%', '%$cleaned%', '%$cleaned%']);
     }
-    if (sex != null) {
-      where.add('sexe = ?');
-      args.add(sex);
-    }
-    if (race != null && race.isNotEmpty) {
-      where.add('race = ?');
-      args.add(race);
-    }
-    if (status != null) {
-      where.add('status = ?');
-      args.add(status);
-    }
-    if (birthYear != null) {
-      where.add("substr(date_naissance, 1, 4) = ?");
-      args.add(birthYear.toString());
-    }
+    if (sex != null) { where.add('sexe = ?'); args.add(sex); }
+    if (race != null && race.isNotEmpty) { where.add('race = ?'); args.add(race); }
+    if (status != null) { where.add('status = ?'); args.add(status); }
+    if (reproductiveRole != null) { where.add('reproductive_role = ?'); args.add(reproductiveRole); }
+    if (birthYear != null) { where.add("substr(date_naissance, 1, 4) = ?"); args.add(birthYear.toString()); }
     final result = await db.query(
       'animals',
       where: where.isEmpty ? null : where.join(' AND '),
@@ -225,90 +209,57 @@ class DatabaseHelper {
   }
 
   Future<Animal?> getAnimalById(int id) async {
-    final result = await (await database).query(
-      'animals',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    return result.isEmpty ? null : Animal.fromMap(result.first);
+    final rows = await (await database).query('animals', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : Animal.fromMap(rows.first);
   }
 
   Future<List<Animal>> getChildren(int parentId) async {
-    final result = await (await database).query(
+    final rows = await (await database).query(
       'animals',
       where: 'mother_id = ? OR father_id = ?',
       whereArgs: [parentId, parentId],
       orderBy: 'date_naissance DESC',
     );
-    return result.map(Animal.fromMap).toList();
+    return rows.map(Animal.fromMap).toList();
   }
 
   Future<List<Animal>> getAncestors(int animalId, {int maxGenerations = 3}) async {
     final result = <Animal>[];
     final seen = <int>{animalId};
-    var currentIds = <int>[animalId];
+    var ids = <int>[animalId];
     for (var generation = 0; generation < maxGenerations; generation++) {
       final next = <int>[];
-      for (final id in currentIds) {
+      for (final id in ids) {
         final animal = await getAnimalById(id);
         for (final parentId in [animal?.motherId, animal?.fatherId]) {
           if (parentId != null && seen.add(parentId)) {
             final parent = await getAnimalById(parentId);
-            if (parent != null) {
-              result.add(parent);
-              next.add(parentId);
-            }
+            if (parent != null) { result.add(parent); next.add(parentId); }
           }
         }
       }
-      currentIds = next;
-      if (currentIds.isEmpty) break;
+      ids = next;
+      if (ids.isEmpty) break;
     }
     return result;
   }
 
-  Future<int> insertAnimal(Animal animal) async {
-    return (await database).insert(
-      'animals',
-      animal.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.abort,
-    );
-  }
+  Future<int> insertAnimal(Animal animal) async => (await database).insert(
+        'animals', animal.toMap(), conflictAlgorithm: ConflictAlgorithm.abort,
+      );
 
   Future<int> updateAnimal(Animal animal) async {
-    if (animal.id == null) {
-      throw ArgumentError('Un identifiant est requis pour modifier un animal.');
-    }
-    if (animal.motherId == animal.id || animal.fatherId == animal.id) {
-      throw ArgumentError('Un animal ne peut pas être son propre parent.');
-    }
-    if (animal.motherId != null && animal.motherId == animal.fatherId) {
-      throw ArgumentError('La mère et le père doivent être deux animaux différents.');
-    }
-    return (await database).update(
-      'animals',
-      animal.toMap(),
-      where: 'id = ?',
-      whereArgs: [animal.id],
-    );
+    if (animal.id == null) throw ArgumentError('Un identifiant est requis pour modifier un animal.');
+    if (animal.motherId == animal.id || animal.fatherId == animal.id) throw ArgumentError('Un animal ne peut pas être son propre parent.');
+    if (animal.motherId != null && animal.motherId == animal.fatherId) throw ArgumentError('La mère et le père doivent être différents.');
+    return (await database).update('animals', animal.toMap(), where: 'id = ?', whereArgs: [animal.id]);
   }
 
   Future<void> archiveAnimal(int id, AnimalStatus status) async {
-    if (status == AnimalStatus.active) {
-      await (await database).update(
-        'animals',
-        {'status': status.label, 'exit_date': null},
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-      return;
-    }
     await (await database).update(
       'animals',
-      {'status': status.label, 'exit_date': DateTime.now().toIso8601String()},
-      where: 'id = ?',
-      whereArgs: [id],
+      {'status': status.label, 'exit_date': status == AnimalStatus.active ? null : DateTime.now().toIso8601String()},
+      where: 'id = ?', whereArgs: [id],
     );
   }
 
@@ -323,43 +274,28 @@ class DatabaseHelper {
 
   Future<int> deleteAnimal(int id) => deleteAnimalPermanently(id);
 
-  Future<int> countAnimals() async {
-    return Sqflite.firstIntValue(
-          await (await database).rawQuery("SELECT COUNT(*) FROM animals WHERE status = 'Actif'"),
-        ) ??
-        0;
-  }
+  Future<int> countAnimals() async => Sqflite.firstIntValue(
+        await (await database).rawQuery("SELECT COUNT(*) FROM animals WHERE status = 'Actif'"),
+      ) ?? 0;
 
   Future<Map<String, int>> getDashboardStats() async {
     final db = await database;
-    Future<int> count(String where, [List<Object?>? args]) async {
-      final rows = await db.rawQuery('SELECT COUNT(*) AS c FROM animals WHERE $where', args);
-      return Sqflite.firstIntValue(rows) ?? 0;
-    }
-
-    final active = await count("status = 'Actif'");
-    final females = await count("status = 'Actif' AND sexe = 'Femelle'");
-    final males = await count("status = 'Actif' AND sexe = 'Mâle'");
-    final missingParents = await count("status = 'Actif' AND (mother_id IS NULL OR father_id IS NULL)");
-    final birthsThisYear = await count(
-      "substr(date_naissance, 1, 4) = ?",
-      [DateTime.now().year.toString()],
-    );
-    final reproductionCount = Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COUNT(*) FROM reproduction_events'),
-        ) ??
-        0;
+    Future<int> count(String where, [List<Object?>? args]) async => Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM animals WHERE $where', args),
+        ) ?? 0;
     return {
-      'active': active,
-      'females': females,
-      'males': males,
-      'missingParents': missingParents,
-      'birthsThisYear': birthsThisYear,
-      'reproductionEvents': reproductionCount,
+      'active': await count("status = 'Actif'"),
+      'females': await count("status = 'Actif' AND sexe = 'Femelle'"),
+      'males': await count("status = 'Actif' AND sexe = 'Mâle'"),
+      'breeders': await count("status = 'Actif' AND reproductive_role = 'Reproducteur'"),
+      'missingParents': await count("status = 'Actif' AND (mother_id IS NULL OR father_id IS NULL)"),
+      'birthsThisYear': await count("substr(date_naissance, 1, 4) = ?", [DateTime.now().year.toString()]),
+      'reproductionEvents': Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM reproduction_events')) ?? 0,
     };
   }
 
   Future<List<String>> getAlerts() async {
+    final db = await database;
     final alerts = <String>[];
     final active = await getAnimals(includeInactive: false);
     for (final animal in active) {
@@ -367,60 +303,59 @@ class DatabaseHelper {
         alerts.add('${animal.identification} : filiation incomplète');
       }
     }
-    final db = await database;
-    final recentLimit = DateTime.now().subtract(const Duration(days: 450)).toIso8601String();
-    final females = active.where((a) => a.normalizedSex == AnimalSex.female);
-    for (final female in females) {
-      final rows = await db.query(
-        'reproduction_events',
-        where: 'animal_id = ? AND date >= ?',
-        whereArgs: [female.id, recentLimit],
-        limit: 1,
-      );
-      if (rows.isEmpty) {
-        alerts.add('${female.identification} : aucun événement de reproduction récent');
+
+    final saillies = await db.rawQuery('''
+      SELECT r.* FROM reproduction_events r
+      WHERE r.type = 'saillie'
+      AND NOT EXISTS (
+        SELECT 1 FROM reproduction_events later
+        WHERE later.animal_id = r.animal_id
+        AND later.date > r.date
+        AND later.type IN ('velage', 'avortement')
+      )
+      ORDER BY r.date DESC
+    ''');
+    final seenAnimals = <int>{};
+    for (final row in saillies) {
+      final animalId = row['animal_id'] as int;
+      if (!seenAnimals.add(animalId)) continue;
+      final animal = await getAnimalById(animalId);
+      if (animal == null || !animal.isActive) continue;
+      final breedingDate = DateTime.parse(row['date'] as String);
+      final days = DateTime.now().difference(breedingDate).inDays;
+      if (days >= 35 && days <= 70) {
+        final diagnostic = await db.query(
+          'reproduction_events',
+          where: "animal_id = ? AND type = 'diagnostic' AND date > ?",
+          whereArgs: [animalId, breedingDate.toIso8601String()],
+          limit: 1,
+        );
+        if (diagnostic.isEmpty) alerts.add('${animal.identification} : diagnostic de gestation à prévoir');
+      }
+      if (days >= 270 && days <= 295) {
+        alerts.add('${animal.identification} : vêlage probable prochainement (${days} j après saillie)');
       }
     }
-    return alerts.take(30).toList();
+    return alerts.take(40).toList();
   }
 
   Future<List<AnimalEvent>> getEventsForAnimal(int animalId) async {
-    final result = await (await database).query(
-      'animal_events',
-      where: 'animal_id = ?',
-      whereArgs: [animalId],
-      orderBy: 'date DESC',
-    );
-    return result.map(AnimalEvent.fromMap).toList();
+    final rows = await (await database).query('animal_events', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
+    return rows.map(AnimalEvent.fromMap).toList();
   }
-
-  Future<int> insertEvent(AnimalEvent event) async =>
-      (await database).insert('animal_events', event.toMap());
-
-  Future<int> deleteEvent(int eventId) async =>
-      (await database).delete('animal_events', where: 'id = ?', whereArgs: [eventId]);
+  Future<int> insertEvent(AnimalEvent event) async => (await database).insert('animal_events', event.toMap());
+  Future<int> deleteEvent(int eventId) async => (await database).delete('animal_events', where: 'id = ?', whereArgs: [eventId]);
 
   Future<List<ReproductionEvent>> getReproductionEventsForAnimal(int animalId) async {
-    final result = await (await database).query(
-      'reproduction_events',
-      where: 'animal_id = ?',
-      whereArgs: [animalId],
-      orderBy: 'date DESC',
-    );
-    return result.map(ReproductionEvent.fromMap).toList();
+    final rows = await (await database).query('reproduction_events', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
+    return rows.map(ReproductionEvent.fromMap).toList();
   }
-
-  Future<int> insertReproductionEvent(ReproductionEvent event) async =>
-      (await database).insert('reproduction_events', event.toMap());
+  Future<int> insertReproductionEvent(ReproductionEvent event) async => (await database).insert('reproduction_events', event.toMap());
 
   Future<int> recordCalving({required Animal calf, required ReproductionEvent event}) async {
     final db = await database;
     return db.transaction((txn) async {
-      final calfId = await txn.insert(
-        'animals',
-        calf.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      );
+      final calfId = await txn.insert('animals', calf.toMap(), conflictAlgorithm: ConflictAlgorithm.abort);
       final eventMap = event.toMap()..['calf_id'] = calfId;
       await txn.insert('reproduction_events', eventMap);
       if (event.calfWeight != null) {
@@ -442,26 +377,23 @@ class DatabaseHelper {
   }
 
   Future<List<HealthEvent>> getHealthEventsForAnimal(int animalId) async {
-    final result = await (await database).query('health_events', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
-    return result.map(HealthEvent.fromMap).toList();
+    final rows = await (await database).query('health_events', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
+    return rows.map(HealthEvent.fromMap).toList();
   }
   Future<int> insertHealthEvent(HealthEvent event) async => (await database).insert('health_events', event.toMap());
-
   Future<List<WeightRecord>> getWeightRecordsForAnimal(int animalId) async {
-    final result = await (await database).query('weight_records', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
-    return result.map(WeightRecord.fromMap).toList();
+    final rows = await (await database).query('weight_records', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
+    return rows.map(WeightRecord.fromMap).toList();
   }
   Future<int> insertWeightRecord(WeightRecord record) async => (await database).insert('weight_records', record.toMap());
-
   Future<List<FeedingRecord>> getFeedingRecordsForAnimal(int animalId) async {
-    final result = await (await database).query('feeding_records', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
-    return result.map(FeedingRecord.fromMap).toList();
+    final rows = await (await database).query('feeding_records', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
+    return rows.map(FeedingRecord.fromMap).toList();
   }
   Future<int> insertFeedingRecord(FeedingRecord record) async => (await database).insert('feeding_records', record.toMap());
-
   Future<List<AnimalMovement>> getMovementsForAnimal(int animalId) async {
-    final result = await (await database).query('animal_movements', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
-    return result.map(AnimalMovement.fromMap).toList();
+    final rows = await (await database).query('animal_movements', where: 'animal_id = ?', whereArgs: [animalId], orderBy: 'date DESC');
+    return rows.map(AnimalMovement.fromMap).toList();
   }
   Future<int> insertAnimalMovement(AnimalMovement movement) async => (await database).insert('animal_movements', movement.toMap());
 
@@ -487,19 +419,9 @@ class DatabaseHelper {
 
   Future<File> exportJson() async {
     final db = await database;
-    const tables = [
-      'animals',
-      'animal_events',
-      'reproduction_events',
-      'health_events',
-      'weight_records',
-      'feeding_records',
-      'animal_movements',
-    ];
-    final data = <String, dynamic>{'schemaVersion': 7, 'exportedAt': DateTime.now().toIso8601String()};
-    for (final table in tables) {
-      data[table] = await db.query(table);
-    }
+    const tables = ['animals', 'animal_events', 'reproduction_events', 'health_events', 'weight_records', 'feeding_records', 'animal_movements'];
+    final data = <String, dynamic>{'schemaVersion': 8, 'exportedAt': DateTime.now().toIso8601String()};
+    for (final table in tables) data[table] = await db.query(table);
     final directory = await _backupDirectory();
     final file = File(join(directory.path, 'troupeau_${_timestamp()}.json'));
     await file.writeAsString(const JsonEncoder.withIndent('  ').convert(data));
@@ -516,24 +438,16 @@ class DatabaseHelper {
   Future<void> restoreJson(File file) async {
     final decoded = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
     final db = await database;
-    const order = [
-      'animal_movements',
-      'feeding_records',
-      'weight_records',
-      'health_events',
-      'reproduction_events',
-      'animal_events',
-      'animals',
-    ];
+    const order = ['animal_movements', 'feeding_records', 'weight_records', 'health_events', 'reproduction_events', 'animal_events', 'animals'];
     await db.transaction((txn) async {
-      for (final table in order) {
-        await txn.delete(table);
-      }
+      for (final table in order) await txn.delete(table);
       for (final table in order.reversed) {
         final rows = decoded[table];
         if (rows is! List) continue;
         for (final raw in rows) {
-          await txn.insert(table, Map<String, Object?>.from(raw as Map));
+          final row = Map<String, Object?>.from(raw as Map);
+          if (table == 'animals') row.putIfAbsent('reproductive_role', () => 'Inconnu');
+          await txn.insert(table, row);
         }
       }
     });
