@@ -1,3 +1,36 @@
+enum AnimalSex {
+  female('Femelle'),
+  male('Mâle'),
+  unknown('Inconnu');
+
+  const AnimalSex(this.label);
+  final String label;
+
+  static AnimalSex fromStorage(String? value) {
+    return AnimalSex.values.firstWhere(
+      (sex) => sex.label == value,
+      orElse: () => AnimalSex.unknown,
+    );
+  }
+}
+
+enum AnimalStatus {
+  active('Actif'),
+  sold('Vendu'),
+  dead('Mort'),
+  transferred('Sorti');
+
+  const AnimalStatus(this.label);
+  final String label;
+
+  static AnimalStatus fromStorage(String? value) {
+    return AnimalStatus.values.firstWhere(
+      (status) => status.label == value,
+      orElse: () => AnimalStatus.active,
+    );
+  }
+}
+
 class Animal {
   final int? id;
   final String identification;
@@ -7,9 +40,10 @@ class Animal {
   final String? sexe;
   final String? premierVelage;
   final String? notes;
-
   final int? motherId;
   final int? fatherId;
+  final String status;
+  final DateTime? exitDate;
 
   Animal({
     this.id,
@@ -22,7 +56,13 @@ class Animal {
     this.notes,
     this.motherId,
     this.fatherId,
+    this.status = 'Actif',
+    this.exitDate,
   });
+
+  AnimalSex get normalizedSex => AnimalSex.fromStorage(sexe);
+  AnimalStatus get normalizedStatus => AnimalStatus.fromStorage(status);
+  bool get isActive => normalizedStatus == AnimalStatus.active;
 
   Map<String, dynamic> toMap() {
     return {
@@ -31,11 +71,13 @@ class Animal {
       'cornes': cornes,
       'date_naissance': dateNaissance.toIso8601String(),
       'race': race,
-      'sexe': sexe,
+      'sexe': normalizedSex.label,
       'premier_velage': premierVelage,
       'notes': notes,
       'mother_id': motherId,
       'father_id': fatherId,
+      'status': normalizedStatus.label,
+      'exit_date': exitDate?.toIso8601String(),
     };
   }
 
@@ -44,15 +86,17 @@ class Animal {
       id: map['id'] as int?,
       identification: map['identification'] as String,
       cornes: map['cornes'] as String,
-      dateNaissance: DateTime.parse(
-        map['date_naissance'] as String,
-      ),
+      dateNaissance: DateTime.parse(map['date_naissance'] as String),
       race: map['race'] as String,
-      sexe: map['sexe'] as String?,
+      sexe: AnimalSex.fromStorage(map['sexe'] as String?).label,
       premierVelage: map['premier_velage'] as String?,
       notes: map['notes'] as String?,
       motherId: map['mother_id'] as int?,
       fatherId: map['father_id'] as int?,
+      status: AnimalStatus.fromStorage(map['status'] as String?).label,
+      exitDate: map['exit_date'] == null
+          ? null
+          : DateTime.tryParse(map['exit_date'] as String),
     );
   }
 
@@ -67,6 +111,11 @@ class Animal {
     String? notes,
     int? motherId,
     int? fatherId,
+    String? status,
+    DateTime? exitDate,
+    bool clearMother = false,
+    bool clearFather = false,
+    bool clearExitDate = false,
   }) {
     return Animal(
       id: id ?? this.id,
@@ -77,8 +126,10 @@ class Animal {
       sexe: sexe ?? this.sexe,
       premierVelage: premierVelage ?? this.premierVelage,
       notes: notes ?? this.notes,
-      motherId: motherId ?? this.motherId,
-      fatherId: fatherId ?? this.fatherId,
+      motherId: clearMother ? null : (motherId ?? this.motherId),
+      fatherId: clearFather ? null : (fatherId ?? this.fatherId),
+      status: status ?? this.status,
+      exitDate: clearExitDate ? null : (exitDate ?? this.exitDate),
     );
   }
 }
