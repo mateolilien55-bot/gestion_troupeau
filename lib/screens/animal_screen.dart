@@ -189,13 +189,14 @@ class _AnimalScreenState extends State<AnimalScreen> {
                         child: ListTile(
                           leading: const CircleAvatar(radius: 28, child: Icon(Icons.pets)),
                           title: Text(animal.identification, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-                          subtitle: Text('Race ${animal.race} • ${animal.status}'),
+                          subtitle: Text('Race ${animal.race} • ${animal.status} • ${animal.normalizedReproductiveRole.label}'),
                           trailing: Chip(label: Text(animal.sexe ?? 'Inconnu')),
                         ),
                       ),
                       const SizedBox(height: 12),
                       _section('Identification', Icons.badge_outlined, [
                         _info('Sexe', animal.sexe ?? 'Inconnu'),
+                        _info('Rôle reproducteur', animal.normalizedReproductiveRole.label),
                         _info('Race', animal.race),
                         _info('Cornes', animal.cornes),
                         _info('Naissance', _date(animal.dateNaissance)),
