@@ -14,6 +14,22 @@ enum AnimalSex {
   }
 }
 
+enum ReproductiveRole {
+  breeder('Reproducteur'),
+  nonBreeder('Non reproducteur'),
+  unknown('Inconnu');
+
+  const ReproductiveRole(this.label);
+  final String label;
+
+  static ReproductiveRole fromStorage(String? value) {
+    return ReproductiveRole.values.firstWhere(
+      (role) => role.label == value,
+      orElse: () => ReproductiveRole.unknown,
+    );
+  }
+}
+
 enum AnimalStatus {
   active('Actif'),
   sold('Vendu'),
@@ -38,6 +54,7 @@ class Animal {
   final DateTime dateNaissance;
   final String race;
   final String? sexe;
+  final String reproductiveRole;
   final String? premierVelage;
   final String? notes;
   final int? motherId;
@@ -52,6 +69,7 @@ class Animal {
     required this.dateNaissance,
     required this.race,
     this.sexe,
+    this.reproductiveRole = 'Inconnu',
     this.premierVelage,
     this.notes,
     this.motherId,
@@ -61,8 +79,12 @@ class Animal {
   });
 
   AnimalSex get normalizedSex => AnimalSex.fromStorage(sexe);
+  ReproductiveRole get normalizedReproductiveRole =>
+      ReproductiveRole.fromStorage(reproductiveRole);
   AnimalStatus get normalizedStatus => AnimalStatus.fromStorage(status);
   bool get isActive => normalizedStatus == AnimalStatus.active;
+  bool get canReproduce =>
+      normalizedReproductiveRole != ReproductiveRole.nonBreeder;
 
   Map<String, dynamic> toMap() {
     return {
@@ -72,6 +94,7 @@ class Animal {
       'date_naissance': dateNaissance.toIso8601String(),
       'race': race,
       'sexe': normalizedSex.label,
+      'reproductive_role': normalizedReproductiveRole.label,
       'premier_velage': premierVelage,
       'notes': notes,
       'mother_id': motherId,
@@ -89,6 +112,8 @@ class Animal {
       dateNaissance: DateTime.parse(map['date_naissance'] as String),
       race: map['race'] as String,
       sexe: AnimalSex.fromStorage(map['sexe'] as String?).label,
+      reproductiveRole:
+          ReproductiveRole.fromStorage(map['reproductive_role'] as String?).label,
       premierVelage: map['premier_velage'] as String?,
       notes: map['notes'] as String?,
       motherId: map['mother_id'] as int?,
@@ -107,6 +132,7 @@ class Animal {
     DateTime? dateNaissance,
     String? race,
     String? sexe,
+    String? reproductiveRole,
     String? premierVelage,
     String? notes,
     int? motherId,
@@ -124,6 +150,7 @@ class Animal {
       dateNaissance: dateNaissance ?? this.dateNaissance,
       race: race ?? this.race,
       sexe: sexe ?? this.sexe,
+      reproductiveRole: reproductiveRole ?? this.reproductiveRole,
       premierVelage: premierVelage ?? this.premierVelage,
       notes: notes ?? this.notes,
       motherId: clearMother ? null : (motherId ?? this.motherId),
