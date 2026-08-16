@@ -23,6 +23,7 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
   DateTime? _birthDate;
   String _horns = 'Cornue';
   String _sex = 'Inconnu';
+  String _reproductiveRole = 'Inconnu';
   int? _motherId;
   int? _fatherId;
   List<Animal> _animals = const [];
@@ -44,6 +45,7 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
       _notes.text = animal.notes ?? '';
       _birthDate = animal.dateNaissance;
       _sex = animal.normalizedSex.label;
+      _reproductiveRole = animal.normalizedReproductiveRole.label;
       _motherId = animal.motherId;
       _fatherId = animal.fatherId;
       _horns = _hornOptions.contains(animal.cornes) ? animal.cornes : 'Autre';
@@ -121,7 +123,7 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
     final currentId = widget.animal?.id;
     final forbidden = currentId == null ? <int>{} : _descendantIds(currentId)..add(currentId);
     return _animals.where((animal) {
-      if (animal.id == null || forbidden.contains(animal.id) || !animal.isActive) return false;
+      if (animal.id == null || forbidden.contains(animal.id) || !animal.isActive || !animal.canReproduce) return false;
       if (_birthDate != null && !animal.dateNaissance.isBefore(_birthDate!)) return false;
       final sex = animal.normalizedSex;
       return mother
@@ -156,7 +158,7 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
                           return ListTile(
                             leading: Icon(mother ? Icons.female : Icons.male),
                             title: Text(animal.identification),
-                            subtitle: Text('${animal.normalizedSex.label} • né(e) le ${_date(animal.dateNaissance)}'),
+                            subtitle: Text('${animal.normalizedSex.label} • ${animal.normalizedReproductiveRole.label} • né(e) le ${_date(animal.dateNaissance)}'),
                             onTap: () => Navigator.pop(context, animal.id),
                           );
                         },
@@ -202,8 +204,7 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
               FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Confirmer')),
             ],
           ),
-        ) ??
-        false;
+        ) ?? false;
   }
 
   Future<void> _save() async {
@@ -228,6 +229,7 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
         dateNaissance: _birthDate!,
         race: _race.text.trim(),
         sexe: _sex,
+        reproductiveRole: _reproductiveRole,
         premierVelage: _premierVelage.text.trim().isEmpty ? null : _premierVelage.text.trim(),
         notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
         motherId: _motherId,
@@ -269,6 +271,13 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
               decoration: const InputDecoration(labelText: 'Sexe', prefixIcon: Icon(Icons.wc), border: OutlineInputBorder()),
               items: AnimalSex.values.map((sex) => DropdownMenuItem(value: sex.label, child: Text(sex.label))).toList(),
               onChanged: (value) => setState(() => _sex = value ?? AnimalSex.unknown.label),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _reproductiveRole,
+              decoration: const InputDecoration(labelText: 'Rôle reproducteur', prefixIcon: Icon(Icons.favorite_outline), border: OutlineInputBorder()),
+              items: ReproductiveRole.values.map((role) => DropdownMenuItem(value: role.label, child: Text(role.label))).toList(),
+              onChanged: (value) => setState(() => _reproductiveRole = value ?? ReproductiveRole.unknown.label),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
