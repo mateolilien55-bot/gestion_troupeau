@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../models/animal.dart';
+import '../services/favorite_store.dart';
 import 'animal_form_screen.dart';
 import 'animal_screen.dart';
 import 'backup_screen.dart';
@@ -19,7 +20,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final _searchController = TextEditingController();
 
   List<Animal> _animals = const [];
+  Set<int> _favorites = const {};
   bool _loading = true;
+  bool _favoritesOnly = false;
   String? _sex;
   String? _status = 'Actif';
   String? _reproductiveRole;
@@ -49,9 +52,13 @@ class _HomeScreenState extends State<HomeScreen> {
         reproductiveRole: _reproductiveRole,
         birthYear: _birthYear,
       );
+      final favorites = await FavoriteStore.load();
       if (!mounted) return;
       setState(() {
-        _animals = animals;
+        _favorites = favorites;
+        _animals = _favoritesOnly
+            ? animals.where((animal) => animal.id != null && favorites.contains(animal.id)).toList()
+            : animals;
         _loading = false;
       });
     } catch (e) {
@@ -61,6 +68,13 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text('Erreur de recherche : $e')),
       );
     }
+  }
+
+  Future<void> _toggleFavorite(Animal animal) async {
+    final id = animal.id;
+    if (id == null) return;
+    await FavoriteStore.toggle(id);
+    await _search();
   }
 
   Future<void> _openAnimal(Animal animal) async {
@@ -118,18 +132,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: const InputDecoration(labelText: 'Rôle reproducteur'),
                   items: const [
                     DropdownMenuItem(value: null, child: Text('Tous')),
-                    DropdownMenuItem(
-                      value: 'Reproducteur',
-                      child: Text('Reproducteur'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'Non reproducteur',
-                      child: Text('Non reproducteur'),
-                    ),
+                    DropdownMenuItem(value: 'Reproducteur', child: Text('Reproducteur')),
+                    DropdownMenuItem(value: 'Non reproducteur', child: Text('Non reproducteur')),
                     DropdownMenuItem(value: 'Inconnu', child: Text('Inconnu')),
                   ],
-                  onChanged: (value) =>
-                      setSheetState(() => reproductiveRole = value),
+                  onChanged: (value) => setSheetState(() => reproductiveRole = value),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
@@ -145,17 +152,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   onChanged: (value) => setSheetState(() => status = value),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: raceController,
-                  decoration: const InputDecoration(labelText: 'Race'),
-                ),
+                TextField(controller: raceController, decoration: const InputDecoration(labelText: 'Race')),
                 const SizedBox(height: 12),
                 TextField(
                   controller: yearController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Année de naissance',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Année de naissance'),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -199,6 +201,14 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Gestion du troupeau'),
         actions: [
           IconButton(
+            tooltip: _favoritesOnly ? 'Afficher tous les animaux' : 'Animaux à surveiller',
+            icon: Icon(_favoritesOnly ? Icons.star : Icons.star_border),
+            onPressed: () {
+              setState(() => _favoritesOnly = !_favoritesOnly);
+              _search();
+            },
+          ),
+          IconButton(
             tooltip: 'Tableau de bord',
             icon: const Icon(Icons.dashboard_outlined),
             onPressed: () => Navigator.push(
@@ -232,12 +242,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     controller: _searchController,
                     onChanged: (_) => _search(),
                     decoration: InputDecoration(
-                      labelText: 'Rechercher',
+                      labelText: _favoritesOnly ? 'Rechercher dans les animaux à surveiller' : 'Rechercher',
                       hintText: 'Numéro, race, mère, père, notes…',
                       prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                 ),
@@ -250,16 +258,21 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+          if (_favoritesOnly)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Chip(avatar: Icon(Icons.star, size: 18), label: Text('Animaux à surveiller')),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
                 const Icon(Icons.pets),
                 const SizedBox(width: 8),
-                Text(
-                  '${_animals.length} résultat(s)',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+                Text('${_animals.length} résultat(s)', style: const TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -276,27 +289,29 @@ class _HomeScreenState extends State<HomeScreen> {
                           itemCount: _animals.length,
                           itemBuilder: (context, index) {
                             final animal = _animals[index];
-                            final d = animal.dateNaissance;
+                            final date = animal.dateNaissance;
+                            final favorite = animal.id != null && _favorites.contains(animal.id);
                             return Card(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 5,
-                              ),
+                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                               child: ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(Icons.pets),
-                                ),
-                                title: Text(
-                                  animal.identification,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                                leading: const CircleAvatar(child: Icon(Icons.pets)),
+                                title: Text(animal.identification, style: const TextStyle(fontWeight: FontWeight.bold)),
                                 subtitle: Text(
-                                  '${animal.sexe ?? 'Inconnu'} • ${animal.normalizedReproductiveRole.label} • Race ${animal.race} • ${animal.status}\nNé(e) le ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}',
+                                  '${animal.sexe ?? 'Inconnu'} • ${animal.normalizedReproductiveRole.label} • Race ${animal.race} • ${animal.status}\n'
+                                  'Né(e) le ${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}',
                                 ),
                                 isThreeLine: true,
-                                trailing: const Icon(Icons.chevron_right),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: favorite ? 'Retirer des favoris' : 'Ajouter aux favoris',
+                                      onPressed: () => _toggleFavorite(animal),
+                                      icon: Icon(favorite ? Icons.star : Icons.star_border),
+                                    ),
+                                    const Icon(Icons.chevron_right),
+                                  ],
+                                ),
                                 onTap: () => _openAnimal(animal),
                               ),
                             );
