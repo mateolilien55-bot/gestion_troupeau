@@ -55,10 +55,10 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
     return (last.weight - first.weight) / days;
   }
 
-  WeightRecord? _previousRecord(DateTime date) {
+  WeightRecord? _previousRecord(DateTime recordDate) {
     WeightRecord? previous;
     for (final record in _records) {
-      if (!record.date.isAfter(date)) previous = record;
+      if (!record.date.isAfter(recordDate)) previous = record;
     }
     return previous;
   }
@@ -70,18 +70,11 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
             title: Text(title),
             content: Text(message),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Annuler'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Enregistrer quand même'),
-              ),
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Enregistrer quand même')),
             ],
           ),
-        ) ??
-        false;
+        ) ?? false;
   }
 
   Future<void> _addWeight() async {
@@ -90,7 +83,7 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
 
     final weightController = TextEditingController();
     final notesController = TextEditingController();
-    var date = DateTime.now();
+    var selectedDate = DateTime.now();
 
     final result = await showModalBottomSheet<Map<String, Object?>>(
       context: context,
@@ -98,28 +91,18 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            8,
-            20,
-            MediaQuery.of(context).viewInsets.bottom + 20,
-          ),
+          padding: EdgeInsets.fromLTRB(20, 8, 20, MediaQuery.of(context).viewInsets.bottom + 20),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Nouvelle pesée',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text('Nouvelle pesée', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text('Animal ${widget.animal.identification}'),
                 if (_records.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  Text(
-                    'Dernière pesée : ${_records.last.weight.toStringAsFixed(1)} kg le ${_date(_records.last.date)}',
-                  ),
+                  Text('Dernière pesée : ${_records.last.weight.toStringAsFixed(1)} kg le ${_date(_records.last.date)}'),
                 ],
                 const SizedBox(height: 18),
                 TextField(
@@ -140,15 +123,15 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
                   onPressed: () async {
                     final picked = await showDatePicker(
                       context: context,
-                      initialDate: date,
+                      initialDate: selectedDate,
                       firstDate: widget.animal.dateNaissance,
                       lastDate: DateTime.now(),
                       helpText: 'Date de la pesée',
                     );
-                    if (picked != null) setSheetState(() => date = picked);
+                    if (picked != null) setSheetState(() => selectedDate = picked);
                   },
                   icon: const Icon(Icons.calendar_month),
-                  label: Text('Date : ${_date(date)}'),
+                  label: Text('Date : ${_date(selectedDate)}'),
                 ),
                 const SizedBox(height: 14),
                 TextField(
@@ -173,7 +156,7 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
                     }
                     Navigator.pop(sheetContext, {
                       'weight': weight,
-                      'date': date,
+                      'date': selectedDate,
                       'notes': notesController.text.trim(),
                     });
                   },
@@ -192,20 +175,20 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
     if (result == null) return;
 
     final weight = result['weight']! as double;
-    final date = result['date']! as DateTime;
+    final recordDate = result['date']! as DateTime;
     final notes = result['notes'] as String?;
-    final selectedDay = _day(date);
+    final selectedDay = _day(recordDate);
 
     final duplicateDate = _records.any((record) => _day(record.date) == selectedDay);
     if (duplicateDate) {
       final proceed = await _confirm(
         'Pesée déjà présente',
-        'Une pesée existe déjà le ${_date(date)} pour cet animal. Voulez-vous enregistrer une deuxième pesée ce jour-là ?',
+        'Une pesée existe déjà le ${_date(recordDate)} pour cet animal. Voulez-vous enregistrer une deuxième pesée ce jour-là ?',
       );
       if (!proceed) return;
     }
 
-    final previous = _previousRecord(date);
+    final previous = _previousRecord(recordDate);
     if (previous != null && previous.weight > 0) {
       final difference = weight - previous.weight;
       final percent = (difference.abs() / previous.weight) * 100;
@@ -214,8 +197,8 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
         final proceed = await _confirm(
           'Écart de poids important',
           'La précédente pesée était de ${previous.weight.toStringAsFixed(1)} kg. '
-          'La nouvelle valeur représente ${sign}${difference.toStringAsFixed(1)} kg '
-          '(${sign}${((difference / previous.weight) * 100).toStringAsFixed(0)} %). Vérifiez la saisie.',
+          'La nouvelle valeur représente $sign${difference.toStringAsFixed(1)} kg '
+          '($sign${((difference / previous.weight) * 100).toStringAsFixed(0)} %). Vérifiez la saisie.',
         );
         if (!proceed) return;
       }
@@ -223,18 +206,14 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
 
     final record = WeightRecord(
       animalId: animalId,
-      date: date,
+      date: recordDate,
       weight: weight,
       notes: notes?.isEmpty == true ? null : notes,
     );
 
     try {
       await _database.insertWeightRecord(record);
-      await SyncQueue.enqueue(
-        entity: 'weight_record',
-        operation: 'insert',
-        payload: record.toMap(),
-      );
+      await SyncQueue.enqueue(entity: 'weight_record', operation: 'insert', payload: record.toMap());
       await _load();
       if (!mounted) return;
       final delta = previous == null ? null : weight - previous.weight;
@@ -249,9 +228,7 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impossible d’enregistrer la pesée : $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Impossible d’enregistrer la pesée : $e')));
     }
   }
 
@@ -281,11 +258,7 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
                             const SizedBox(height: 12),
                             const Text('Aucune pesée enregistrée pour cet animal.'),
                             const SizedBox(height: 12),
-                            FilledButton.icon(
-                              onPressed: _addWeight,
-                              icon: const Icon(Icons.add),
-                              label: const Text('Enregistrer la première pesée'),
-                            ),
+                            FilledButton.icon(onPressed: _addWeight, icon: const Icon(Icons.add), label: const Text('Enregistrer la première pesée')),
                           ],
                         ),
                       ),
@@ -297,41 +270,26 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Évolution du poids',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                            ),
+                            Text('Évolution du poids', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
                             const SizedBox(height: 16),
-                            SizedBox(
-                              height: 260,
-                              width: double.infinity,
-                              child: CustomPaint(
-                                painter: _WeightChartPainter(records: _records),
-                              ),
-                            ),
+                            SizedBox(height: 260, width: double.infinity, child: CustomPaint(painter: _WeightChartPainter(records: _records))),
                             const SizedBox(height: 12),
                             Text('Dernier poids : ${_records.last.weight.toStringAsFixed(1)} kg'),
                             Text('Dernière pesée : ${_date(_records.last.date)}'),
-                            if (_gainPerDay != null)
-                              Text('Gain moyen : ${(_gainPerDay! * 1000).toStringAsFixed(0)} g/jour'),
+                            if (_gainPerDay != null) Text('Gain moyen : ${(_gainPerDay! * 1000).toStringAsFixed(0)} g/jour'),
                           ],
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      'Historique des pesées',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                    ),
+                    Text('Historique des pesées', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     ..._records.reversed.map(
                       (record) => Card(
                         child: ListTile(
                           leading: const CircleAvatar(child: Icon(Icons.monitor_weight_outlined)),
                           title: Text('${record.weight.toStringAsFixed(1)} kg'),
-                          subtitle: Text(
-                            '${_date(record.date)}${record.notes?.trim().isNotEmpty == true ? ' • ${record.notes}' : ''}',
-                          ),
+                          subtitle: Text('${_date(record.date)}${record.notes?.trim().isNotEmpty == true ? ' • ${record.notes}' : ''}'),
                         ),
                       ),
                     ),
@@ -350,14 +308,12 @@ class _WeightChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (records.isEmpty) return;
-
     const left = 46.0;
     const right = 12.0;
     const top = 16.0;
     const bottom = 30.0;
     final chartWidth = math.max(1.0, size.width - left - right).toDouble();
     final chartHeight = math.max(1.0, size.height - top - bottom).toDouble();
-
     final weights = records.map((record) => record.weight).toList();
     var minWeight = weights.reduce((a, b) => a < b ? a : b);
     var maxWeight = weights.reduce((a, b) => a > b ? a : b);
@@ -365,68 +321,37 @@ class _WeightChartPainter extends CustomPainter {
       minWeight -= 1;
       maxWeight += 1;
     }
-
     final firstDate = records.first.date;
     final lastDate = records.last.date;
     final totalDays = math.max(1, lastDate.difference(firstDate).inDays).toDouble();
-
-    final axisPaint = Paint()
-      ..color = Colors.grey
-      ..strokeWidth = 1;
-    final linePaint = Paint()
-      ..color = Colors.green
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
+    final axisPaint = Paint()..color = Colors.grey..strokeWidth = 1;
+    final linePaint = Paint()..color = Colors.green..strokeWidth = 2.5..style = PaintingStyle.stroke;
     final pointPaint = Paint()..color = Colors.green;
-
     canvas.drawLine(const Offset(left, top), Offset(left, top + chartHeight), axisPaint);
     canvas.drawLine(Offset(left, top + chartHeight), Offset(left + chartWidth, top + chartHeight), axisPaint);
-
     Offset pointFor(WeightRecord record) {
       final xFraction = record.date.difference(firstDate).inDays / totalDays;
       final yFraction = (record.weight - minWeight) / (maxWeight - minWeight);
-      return Offset(
-        left + (xFraction * chartWidth),
-        top + chartHeight - (yFraction * chartHeight),
-      );
+      return Offset(left + (xFraction * chartWidth), top + chartHeight - (yFraction * chartHeight));
     }
-
     final path = Path();
     for (var index = 0; index < records.length; index++) {
       final point = pointFor(records[index]);
-      if (index == 0) {
-        path.moveTo(point.dx, point.dy);
-      } else {
-        path.lineTo(point.dx, point.dy);
-      }
+      if (index == 0) { path.moveTo(point.dx, point.dy); } else { path.lineTo(point.dx, point.dy); }
       canvas.drawCircle(point, 3.5, pointPaint);
     }
     canvas.drawPath(path, linePaint);
-
     const textStyle = TextStyle(fontSize: 11, color: Colors.black87);
     void drawText(String text, Offset offset) {
-      final painter = TextPainter(
-        text: TextSpan(text: text, style: textStyle),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      final painter = TextPainter(text: TextSpan(text: text, style: textStyle), textDirection: TextDirection.ltr)..layout();
       painter.paint(canvas, offset);
     }
-
     drawText('${maxWeight.toStringAsFixed(0)} kg', const Offset(0, top - 6));
     drawText('${minWeight.toStringAsFixed(0)} kg', Offset(0, top + chartHeight - 8));
-    drawText(
-      '${firstDate.day.toString().padLeft(2, '0')}/${firstDate.month.toString().padLeft(2, '0')}',
-      Offset(left, top + chartHeight + 8),
-    );
+    drawText('${firstDate.day.toString().padLeft(2, '0')}/${firstDate.month.toString().padLeft(2, '0')}', Offset(left, top + chartHeight + 8));
     final lastLabel = '${lastDate.day.toString().padLeft(2, '0')}/${lastDate.month.toString().padLeft(2, '0')}';
-    final lastPainter = TextPainter(
-      text: TextSpan(text: lastLabel, style: textStyle),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    lastPainter.paint(
-      canvas,
-      Offset(left + chartWidth - lastPainter.width, top + chartHeight + 8),
-    );
+    final lastPainter = TextPainter(text: TextSpan(text: lastLabel, style: textStyle), textDirection: TextDirection.ltr)..layout();
+    lastPainter.paint(canvas, Offset(left + chartWidth - lastPainter.width, top + chartHeight + 8));
   }
 
   @override
