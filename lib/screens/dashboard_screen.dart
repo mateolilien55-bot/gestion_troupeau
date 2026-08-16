@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../database/database.dart';
+import 'activity_log_screen.dart';
+import 'advanced_statistics_screen.dart';
+import 'breeding_calendar_screen.dart';
+import 'consistency_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -33,6 +37,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  Future<void> _open(Widget screen) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
+
   Widget _stat(String label, int value, IconData icon) {
     return Card(
       child: Padding(
@@ -50,6 +58,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _tool(String label, IconData icon, Widget screen) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(child: Icon(icon)),
+        title: Text(label),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _open(screen),
       ),
     );
   }
@@ -73,7 +92,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _stat('Naissances cette année', stats['birthsThisYear'] ?? 0, Icons.child_friendly),
                   _stat('Filiations incomplètes', stats['missingParents'] ?? 0, Icons.account_tree_outlined),
                   _stat('Événements de reproduction', stats['reproductionEvents'] ?? 0, Icons.favorite_outline),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
+                  Text('Outils', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  _tool('Calendrier d’élevage', Icons.calendar_month, const BreedingCalendarScreen()),
+                  _tool('Journal d’activité global', Icons.history, const ActivityLogScreen()),
+                  _tool('Statistiques reproduction et santé', Icons.query_stats, const AdvancedStatisticsScreen()),
+                  _tool('Contrôle de cohérence', Icons.fact_check_outlined, const ConsistencyScreen()),
+                  const SizedBox(height: 20),
                   Text('Alertes', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   if (_alerts.isEmpty)
