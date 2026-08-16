@@ -6,6 +6,7 @@ import 'advanced_statistics_screen.dart';
 import 'breeding_calendar_screen.dart';
 import 'bulk_actions_screen.dart';
 import 'consistency_screen.dart';
+import 'documents_hub_screen.dart';
 import 'sync_status_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -102,6 +103,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _tool('Statistiques reproduction et santé', Icons.query_stats, const AdvancedStatisticsScreen()),
                   _tool('Contrôle de cohérence', Icons.fact_check_outlined, const ConsistencyScreen()),
                   _tool('Actions en masse', Icons.checklist_rtl, const BulkActionsScreen()),
+                  _tool('Documents joints', Icons.attach_file, const DocumentsHubScreen()),
                   _tool('Synchronisation hors ligne', Icons.cloud_sync_outlined, const SyncStatusScreen()),
                   const SizedBox(height: 20),
                   Text('Alertes', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
