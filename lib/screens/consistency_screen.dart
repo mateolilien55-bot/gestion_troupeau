@@ -78,7 +78,12 @@ class _ConsistencyScreenState extends State<ConsistencyScreen> {
           : RefreshIndicator(
               onRefresh: _run,
               child: _issues.isEmpty
-                  ? const ListView(children: [SizedBox(height: 180), Center(child: Text('Aucune incohérence détectée.'))])
+                  ? ListView(
+                      children: const [
+                        SizedBox(height: 180),
+                        Center(child: Text('Aucune incohérence détectée.')),
+                      ],
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.all(12),
                       itemCount: _issues.length,
