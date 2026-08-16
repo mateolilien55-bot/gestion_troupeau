@@ -17,6 +17,7 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
   final _database = DatabaseHelper.instance;
   Map<int, Animal> _animals = const {};
   List<Animal> _children = const [];
+  Map<int, List<Animal>> _grandchildrenByChild = const {};
   bool _loading = true;
 
   @override
@@ -29,6 +30,13 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
     final animals = await _database.getAnimals();
     final id = widget.animal.id;
     final children = id == null ? <Animal>[] : await _database.getChildren(id);
+    final grandchildrenByChild = <int, List<Animal>>{};
+    for (final child in children) {
+      final childId = child.id;
+      if (childId != null) {
+        grandchildrenByChild[childId] = await _database.getChildren(childId);
+      }
+    }
     if (!mounted) return;
     setState(() {
       _animals = {
@@ -36,6 +44,7 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
           if (animal.id != null) animal.id!: animal,
       };
       _children = children;
+      _grandchildrenByChild = grandchildrenByChild;
       _loading = false;
     });
   }
@@ -55,18 +64,15 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
       '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
 
   _TreeNode _nodeFor(int? id, String unknownLabel) {
-    final animal = _animal(id);
-    return _TreeNode(animal: animal, unknownLabel: unknownLabel);
+    return _TreeNode(animal: _animal(id), unknownLabel: unknownLabel);
   }
 
-  List<_TreeNode> get _generation1 {
-    return [
-      _nodeFor(widget.animal.motherId, 'Mère inconnue'),
-      _nodeFor(widget.animal.fatherId, 'Père inconnu'),
-    ];
-  }
+  List<_TreeNode> get _parents => [
+        _nodeFor(widget.animal.motherId, 'Mère inconnue'),
+        _nodeFor(widget.animal.fatherId, 'Père inconnu'),
+      ];
 
-  List<_TreeNode> get _generation2 {
+  List<_TreeNode> get _grandparents {
     final mother = _animal(widget.animal.motherId);
     final father = _animal(widget.animal.fatherId);
     return [
@@ -75,27 +81,6 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
       _nodeFor(father?.motherId, 'Grand-mère paternelle inconnue'),
       _nodeFor(father?.fatherId, 'Grand-père paternel inconnu'),
     ];
-  }
-
-  List<_TreeNode> get _generation3 {
-    final grandparents = _generation2.map((node) => node.animal).toList();
-    final labels = [
-      'Arrière-grand-mère inconnue',
-      'Arrière-grand-père inconnu',
-      'Arrière-grand-mère inconnue',
-      'Arrière-grand-père inconnu',
-      'Arrière-grand-mère inconnue',
-      'Arrière-grand-père inconnu',
-      'Arrière-grand-mère inconnue',
-      'Arrière-grand-père inconnu',
-    ];
-    final nodes = <_TreeNode>[];
-    for (var index = 0; index < grandparents.length; index++) {
-      final ancestor = grandparents[index];
-      nodes.add(_nodeFor(ancestor?.motherId, labels[index * 2]));
-      nodes.add(_nodeFor(ancestor?.fatherId, labels[(index * 2) + 1]));
-    }
-    return nodes;
   }
 
   Widget _treeCard(_TreeNode node, {bool selected = false}) {
@@ -119,8 +104,8 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
         borderRadius: BorderRadius.circular(14),
         onTap: animal == null || selected ? null : () => _open(animal),
         child: SizedBox(
-          width: 138,
-          height: 82,
+          width: 146,
+          height: 84,
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Column(
@@ -150,59 +135,42 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
     );
   }
 
-  Widget _generationLabel(String label) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
-        ),
+  Widget _label(String text) => Text(
+        text,
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
       );
 
-  Widget _tree() {
-    const width = 1240.0;
-    const height = 610.0;
-    const cardWidth = 138.0;
-    const cardHeight = 82.0;
-
-    final positions = <Offset>[];
+  Widget _ancestorTree() {
+    const width = 760.0;
+    const height = 460.0;
+    const cardWidth = 146.0;
+    const cardHeight = 84.0;
 
     List<Offset> rowPositions(int count, double y) {
       final gap = width / count;
-      return List.generate(
-        count,
-        (index) => Offset((gap * index) + (gap / 2) - (cardWidth / 2), y),
-      );
+      return List.generate(count, (index) => Offset((gap * index) + (gap / 2) - (cardWidth / 2), y));
     }
 
-    final gen3Positions = rowPositions(8, 34);
-    final gen2Positions = rowPositions(4, 180);
-    final gen1Positions = rowPositions(2, 326);
-    final selectedPosition = Offset((width - cardWidth) / 2, 472);
-    positions
-      ..addAll(gen3Positions)
-      ..addAll(gen2Positions)
-      ..addAll(gen1Positions)
-      ..add(selectedPosition);
-
-    final connections = <_TreeConnection>[];
-    for (var parentIndex = 0; parentIndex < 4; parentIndex++) {
-      connections.add(_TreeConnection(from: parentIndex * 2, to: 8 + parentIndex));
-      connections.add(_TreeConnection(from: (parentIndex * 2) + 1, to: 8 + parentIndex));
-    }
-    connections.addAll([
-      const _TreeConnection(from: 8, to: 12),
-      const _TreeConnection(from: 9, to: 12),
-      const _TreeConnection(from: 10, to: 13),
-      const _TreeConnection(from: 11, to: 13),
-      const _TreeConnection(from: 12, to: 14),
-      const _TreeConnection(from: 13, to: 14),
-    ]);
-
+    final grandparentPositions = rowPositions(4, 38);
+    final parentPositions = rowPositions(2, 188);
+    final selectedPosition = Offset((width - cardWidth) / 2, 338);
+    final positions = <Offset>[
+      ...grandparentPositions,
+      ...parentPositions,
+      selectedPosition,
+    ];
+    final connections = const [
+      _TreeConnection(from: 0, to: 4),
+      _TreeConnection(from: 1, to: 4),
+      _TreeConnection(from: 2, to: 5),
+      _TreeConnection(from: 3, to: 5),
+      _TreeConnection(from: 4, to: 6),
+      _TreeConnection(from: 5, to: 6),
+    ];
     final nodes = <_TreeNode>[
-      ..._generation3,
-      ..._generation2,
-      ..._generation1,
+      ..._grandparents,
+      ..._parents,
       _TreeNode(animal: widget.animal, unknownLabel: ''),
     ];
 
@@ -211,20 +179,18 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
             child: Row(
               children: [
                 const Icon(Icons.account_tree),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Arbre généalogique — 3 générations',
+                    'Ascendance — 2 générations',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
                 const Icon(Icons.swipe, size: 20),
-                const SizedBox(width: 4),
-                const Text('Faire défiler'),
               ],
             ),
           ),
@@ -247,10 +213,9 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
                       ),
                     ),
                   ),
-                  Positioned(top: 4, left: 0, right: 0, child: _generationLabel('Arrière-grands-parents')),
-                  Positioned(top: 150, left: 0, right: 0, child: _generationLabel('Grands-parents')),
-                  Positioned(top: 296, left: 0, right: 0, child: _generationLabel('Parents')),
-                  Positioned(top: 442, left: 0, right: 0, child: _generationLabel('Animal')),
+                  Positioned(top: 8, left: 0, right: 0, child: _label('Grands-parents')),
+                  Positioned(top: 158, left: 0, right: 0, child: _label('Parents')),
+                  Positioned(top: 308, left: 0, right: 0, child: _label('Animal')),
                   for (var index = 0; index < nodes.length; index++)
                     Positioned(
                       left: positions[index].dx,
@@ -266,48 +231,59 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
     );
   }
 
-  Widget _childrenSection() {
+  Widget _descendantTree() {
+    final grandchildren = _grandchildrenByChild.values.expand((items) => items).toList();
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                const Icon(Icons.child_friendly),
+                const Icon(Icons.family_restroom),
                 const SizedBox(width: 8),
-                Text(
-                  'Descendants directs',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    'Descendance — 2 générations',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
                 ),
-                const Spacer(),
-                Chip(label: Text('${_children.length}')),
               ],
             ),
+            const SizedBox(height: 16),
+            Center(child: _treeCard(_TreeNode(animal: widget.animal, unknownLabel: ''), selected: true)),
+            const SizedBox(height: 10),
+            const Center(child: Icon(Icons.arrow_downward)),
+            const SizedBox(height: 8),
+            _label('Enfants'),
             const SizedBox(height: 8),
             if (_children.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('Aucun descendant direct enregistré.'),
-              )
+              const Center(child: Padding(padding: EdgeInsets.all(12), child: Text('Aucun enfant enregistré.')))
             else
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _children
-                    .map(
-                      (animal) => ActionChip(
-                        avatar: Icon(
-                          animal.normalizedSex == AnimalSex.male ? Icons.male : Icons.female,
-                          size: 18,
-                        ),
-                        label: Text(animal.identification),
-                        onPressed: () => _open(animal),
-                      ),
-                    )
-                    .toList(),
+                alignment: WrapAlignment.center,
+                spacing: 12,
+                runSpacing: 12,
+                children: _children.map((child) => _treeCard(_TreeNode(animal: child, unknownLabel: ''))).toList(),
               ),
+            const SizedBox(height: 18),
+            if (_children.isNotEmpty) ...[
+              const Center(child: Icon(Icons.arrow_downward)),
+              const SizedBox(height: 8),
+              _label('Petits-enfants'),
+              const SizedBox(height: 8),
+              if (grandchildren.isEmpty)
+                const Center(child: Padding(padding: EdgeInsets.all(12), child: Text('Aucun petit-enfant enregistré.')))
+              else
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: grandchildren.map((animal) => _treeCard(_TreeNode(animal: animal, unknownLabel: ''))).toList(),
+                ),
+            ],
           ],
         ),
       ),
@@ -325,15 +301,15 @@ class _GenealogyScreenState extends State<GenealogyScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  _tree(),
+                  _ancestorTree(),
                   const SizedBox(height: 12),
-                  _childrenSection(),
+                  _descendantTree(),
                   const SizedBox(height: 12),
                   const Card(
                     child: ListTile(
                       leading: Icon(Icons.touch_app_outlined),
                       title: Text('Navigation dans la famille'),
-                      subtitle: Text('Touchez un animal de l’arbre ou un descendant pour ouvrir sa fiche complète.'),
+                      subtitle: Text('Touchez un ascendant, un enfant ou un petit-enfant pour ouvrir sa fiche complète.'),
                     ),
                   ),
                 ],
