@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../database/database.dart';
 import '../models/animal.dart';
 import '../models/animal_event.dart';
+import '../services/favorite_store.dart';
 import 'animal_event_form_screen.dart';
 import 'animal_form_screen.dart';
 import 'genealogy_screen.dart';
 import 'reproduction_screen.dart';
+import 'weight_chart_screen.dart';
 
 class AnimalScreen extends StatefulWidget {
   const AnimalScreen({super.key, required this.animalId});
@@ -21,6 +23,7 @@ class _AnimalScreenState extends State<AnimalScreen> {
   Animal? _animal;
   List<AnimalEvent> _events = const [];
   List<Animal> _children = const [];
+  bool _favorite = false;
   bool _loading = true;
 
   @override
@@ -34,11 +37,13 @@ class _AnimalScreenState extends State<AnimalScreen> {
       final animal = await _database.getAnimalById(widget.animalId);
       final events = await _database.getEventsForAnimal(widget.animalId);
       final children = await _database.getChildren(widget.animalId);
+      final favorite = await FavoriteStore.isFavorite(widget.animalId);
       if (!mounted) return;
       setState(() {
         _animal = animal;
         _events = events;
         _children = children;
+        _favorite = favorite;
         _loading = false;
       });
     } catch (e) {
@@ -51,6 +56,11 @@ class _AnimalScreenState extends State<AnimalScreen> {
   String _date(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
+  Future<void> _toggleFavorite() async {
+    final favorite = await FavoriteStore.toggle(widget.animalId);
+    if (mounted) setState(() => _favorite = favorite);
+  }
+
   Future<void> _openAnimal(int? id) async {
     if (id == null) return;
     await Navigator.push(context, MaterialPageRoute(builder: (_) => AnimalScreen(animalId: id)));
@@ -60,7 +70,10 @@ class _AnimalScreenState extends State<AnimalScreen> {
   Future<void> _edit() async {
     final animal = _animal;
     if (animal == null) return;
-    final changed = await Navigator.push(context, MaterialPageRoute(builder: (_) => AnimalFormScreen(animal: animal)));
+    final changed = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AnimalFormScreen(animal: animal)),
+    );
     if (changed == true) await _load();
   }
 
@@ -80,12 +93,14 @@ class _AnimalScreenState extends State<AnimalScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: AnimalStatus.values
-              .map((value) => ListTile(
-                    leading: Icon(value == AnimalStatus.active ? Icons.check_circle_outline : Icons.logout),
-                    title: Text(value.label),
-                    trailing: animal!.normalizedStatus == value ? const Icon(Icons.check) : null,
-                    onTap: () => Navigator.pop(context, value),
-                  ))
+              .map(
+                (value) => ListTile(
+                  leading: Icon(value == AnimalStatus.active ? Icons.check_circle_outline : Icons.logout),
+                  title: Text(value.label),
+                  trailing: animal!.normalizedStatus == value ? const Icon(Icons.check) : null,
+                  onTap: () => Navigator.pop(context, value),
+                ),
+              )
               .toList(),
         ),
       ),
@@ -120,7 +135,13 @@ class _AnimalScreenState extends State<AnimalScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [Icon(icon), const SizedBox(width: 8), Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))]),
+              Row(
+                children: [
+                  Icon(icon),
+                  const SizedBox(width: 8),
+                  Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                ],
+              ),
               const SizedBox(height: 12),
               ...children,
             ],
@@ -130,10 +151,13 @@ class _AnimalScreenState extends State<AnimalScreen> {
 
   Widget _info(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 130, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
-          Expanded(child: Text(value)),
-        ]),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 130, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+            Expanded(child: Text(value)),
+          ],
+        ),
       );
 
   Widget _parent(String label, int? id, IconData icon) {
@@ -142,7 +166,9 @@ class _AnimalScreenState extends State<AnimalScreen> {
       future: _database.getAnimalById(id),
       builder: (context, snapshot) {
         final parent = snapshot.data;
-        if (parent == null) return _info(label, snapshot.connectionState == ConnectionState.waiting ? 'Chargement…' : 'Inconnu');
+        if (parent == null) {
+          return _info(label, snapshot.connectionState == ConnectionState.waiting ? 'Chargement…' : 'Inconnu');
+        }
         return ListTile(
           contentPadding: EdgeInsets.zero,
           leading: CircleAvatar(child: Icon(icon)),
@@ -162,6 +188,12 @@ class _AnimalScreenState extends State<AnimalScreen> {
       appBar: AppBar(
         title: Text(animal?.identification ?? 'Animal'),
         actions: [
+          if (animal != null)
+            IconButton(
+              tooltip: _favorite ? 'Retirer des animaux à surveiller' : 'Ajouter aux animaux à surveiller',
+              onPressed: _toggleFavorite,
+              icon: Icon(_favorite ? Icons.star : Icons.star_border),
+            ),
           if (animal != null) IconButton(tooltip: 'Modifier', onPressed: _edit, icon: const Icon(Icons.edit)),
           if (animal != null)
             PopupMenuButton<String>(
@@ -188,7 +220,17 @@ class _AnimalScreenState extends State<AnimalScreen> {
                       Card(
                         child: ListTile(
                           leading: const CircleAvatar(radius: 28, child: Icon(Icons.pets)),
-                          title: Text(animal.identification, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  animal.identification,
+                                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              if (_favorite) const Icon(Icons.star),
+                            ],
+                          ),
                           subtitle: Text('Race ${animal.race} • ${animal.status} • ${animal.normalizedReproductiveRole.label}'),
                           trailing: Chip(label: Text(animal.sexe ?? 'Inconnu')),
                         ),
@@ -213,7 +255,10 @@ class _AnimalScreenState extends State<AnimalScreen> {
                           child: OutlinedButton.icon(
                             icon: const Icon(Icons.account_tree),
                             label: const Text('Voir l’arbre généalogique'),
-                            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GenealogyScreen(animal: animal))),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => GenealogyScreen(animal: animal)),
+                            ),
                           ),
                         ),
                       ]),
@@ -222,36 +267,64 @@ class _AnimalScreenState extends State<AnimalScreen> {
                         if (_children.isEmpty)
                           const Text('Aucun descendant enregistré.')
                         else
-                          ..._children.map((child) => ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: const CircleAvatar(child: Icon(Icons.pets)),
-                                title: Text(child.identification),
-                                subtitle: Text('${child.sexe ?? 'Inconnu'} • né(e) le ${_date(child.dateNaissance)}'),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () => _openAnimal(child.id),
-                              )),
+                          ..._children.map(
+                            (child) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const CircleAvatar(child: Icon(Icons.pets)),
+                              title: Text(child.identification),
+                              subtitle: Text('${child.sexe ?? 'Inconnu'} • né(e) le ${_date(child.dateNaissance)}'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => _openAnimal(child.id),
+                            ),
+                          ),
+                      ]),
+                      const SizedBox(height: 12),
+                      _section('Suivi', Icons.insights_outlined, [
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => WeightChartScreen(animal: animal)),
+                            ),
+                            icon: const Icon(Icons.show_chart),
+                            label: const Text('Voir la courbe de poids'),
+                          ),
+                        ),
                       ]),
                       const SizedBox(height: 12),
                       _section('Reproduction', Icons.favorite_outline, [
                         _info('Premier vêlage', animal.premierVelage ?? 'Non renseigné'),
-                        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _openReproduction, icon: const Icon(Icons.favorite), label: const Text('Gérer la reproduction'))),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _openReproduction,
+                            icon: const Icon(Icons.favorite),
+                            label: const Text('Gérer la reproduction'),
+                          ),
+                        ),
                       ]),
                       const SizedBox(height: 12),
                       _section('Historique', Icons.history, [
                         if (_events.isEmpty) const Text('Aucun événement.'),
-                        ..._events.take(10).map((event) => ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.event),
-                              title: Text(event.type),
-                              subtitle: Text('${_date(event.date)}${event.description?.isNotEmpty == true ? ' • ${event.description}' : ''}'),
-                            )),
+                        ..._events.take(10).map(
+                          (event) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.event),
+                            title: Text(event.type),
+                            subtitle: Text('${_date(event.date)}${event.description?.isNotEmpty == true ? ' • ${event.description}' : ''}'),
+                          ),
+                        ),
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
                             icon: const Icon(Icons.add),
                             label: const Text('Ajouter un événement'),
                             onPressed: () async {
-                              final changed = await Navigator.push(context, MaterialPageRoute(builder: (_) => AnimalEventFormScreen(animalId: animal.id!)));
+                              final changed = await Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => AnimalEventFormScreen(animalId: animal.id!)),
+                              );
                               if (changed == true) await _load();
                             },
                           ),
