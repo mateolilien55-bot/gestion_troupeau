@@ -69,6 +69,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _stat('Animaux actifs', stats['active'] ?? 0, Icons.pets),
                   _stat('Femelles actives', stats['females'] ?? 0, Icons.female),
                   _stat('Mâles actifs', stats['males'] ?? 0, Icons.male),
+                  _stat('Reproducteurs actifs', stats['breeders'] ?? 0, Icons.favorite),
                   _stat('Naissances cette année', stats['birthsThisYear'] ?? 0, Icons.child_friendly),
                   _stat('Filiations incomplètes', stats['missingParents'] ?? 0, Icons.account_tree_outlined),
                   _stat('Événements de reproduction', stats['reproductionEvents'] ?? 0, Icons.favorite_outline),
