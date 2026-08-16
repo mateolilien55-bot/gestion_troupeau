@@ -38,35 +38,23 @@ class _ReproductionScreenState extends State<ReproductionScreen> {
 
   String _title(String type) {
     switch (type) {
-      case 'velage':
-        return 'Vêlage';
-      case 'saillie':
-        return 'Saillie / IA';
-      case 'diagnostic':
-        return 'Diagnostic de gestation';
-      case 'avortement':
-        return 'Avortement';
-      case 'chaleur':
-        return 'Retour en chaleur';
-      default:
-        return type;
+      case 'velage': return 'Vêlage';
+      case 'saillie': return 'Saillie / IA';
+      case 'diagnostic': return 'Diagnostic de gestation';
+      case 'avortement': return 'Avortement';
+      case 'chaleur': return 'Retour en chaleur';
+      default: return type;
     }
   }
 
   IconData _icon(String type) {
     switch (type) {
-      case 'velage':
-        return Icons.child_friendly;
-      case 'saillie':
-        return Icons.favorite;
-      case 'diagnostic':
-        return Icons.biotech;
-      case 'avortement':
-        return Icons.heart_broken_outlined;
-      case 'chaleur':
-        return Icons.autorenew;
-      default:
-        return Icons.event;
+      case 'velage': return Icons.child_friendly;
+      case 'saillie': return Icons.favorite;
+      case 'diagnostic': return Icons.biotech;
+      case 'avortement': return Icons.heart_broken_outlined;
+      case 'chaleur': return Icons.autorenew;
+      default: return Icons.event;
     }
   }
 
@@ -74,36 +62,13 @@ class _ReproductionScreenState extends State<ReproductionScreen> {
     final type = await showModalBottomSheet<String>(
       context: context,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.child_friendly),
-              title: const Text('Vêlage'),
-              onTap: () => Navigator.pop(context, 'velage'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.favorite),
-              title: const Text('Saillie / IA'),
-              onTap: () => Navigator.pop(context, 'saillie'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.biotech),
-              title: const Text('Diagnostic de gestation'),
-              onTap: () => Navigator.pop(context, 'diagnostic'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.heart_broken_outlined),
-              title: const Text('Avortement'),
-              onTap: () => Navigator.pop(context, 'avortement'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.autorenew),
-              title: const Text('Retour en chaleur'),
-              onTap: () => Navigator.pop(context, 'chaleur'),
-            ),
-          ],
-        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.child_friendly), title: const Text('Vêlage'), onTap: () => Navigator.pop(context, 'velage')),
+          ListTile(leading: const Icon(Icons.favorite), title: const Text('Saillie / IA'), onTap: () => Navigator.pop(context, 'saillie')),
+          ListTile(leading: const Icon(Icons.biotech), title: const Text('Diagnostic de gestation'), onTap: () => Navigator.pop(context, 'diagnostic')),
+          ListTile(leading: const Icon(Icons.heart_broken_outlined), title: const Text('Avortement'), onTap: () => Navigator.pop(context, 'avortement')),
+          ListTile(leading: const Icon(Icons.autorenew), title: const Text('Retour en chaleur'), onTap: () => Navigator.pop(context, 'chaleur')),
+        ]),
       ),
     );
     if (!mounted || type == null) return;
@@ -122,10 +87,7 @@ class _ReproductionScreenState extends State<ReproductionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Reproduction - ${widget.animal.identification}')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _add,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: FloatingActionButton(onPressed: _add, child: const Icon(Icons.add)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _events.isEmpty
@@ -138,25 +100,11 @@ class _ReproductionScreenState extends State<ReproductionScreen> {
                     itemBuilder: (context, index) {
                       final event = _events[index];
                       final details = <String>[_date(event.date)];
-                      if (event.bull?.trim().isNotEmpty == true) {
-                        details.add('Père/semence : ${event.bull}');
-                      }
-                      if (event.pregnancyConfirmed != null) {
-                        details.add(
-                          event.pregnancyConfirmed!
-                              ? 'Gestation confirmée'
-                              : 'Gestation non confirmée',
-                        );
-                      }
-                      if (event.calfSex != null) {
-                        details.add('Veau : ${event.calfSex}');
-                      }
-                      if (event.calfWeight != null) {
-                        details.add('${event.calfWeight} kg');
-                      }
-                      if (event.notes?.trim().isNotEmpty == true) {
-                        details.add(event.notes!);
-                      }
+                      if (event.bull?.trim().isNotEmpty == true) details.add('Père/semence : ${event.bull}');
+                      if (event.pregnancyConfirmed != null) details.add(event.pregnancyConfirmed! ? 'Gestation confirmée' : 'Gestation non confirmée');
+                      if (event.calfSex != null) details.add('Veau : ${event.calfSex}');
+                      if (event.calfWeight != null) details.add('${event.calfWeight} kg');
+                      if (event.notes?.trim().isNotEmpty == true) details.add(event.notes!);
                       return Card(
                         child: ListTile(
                           leading: CircleAvatar(child: Icon(_icon(event.type))),
@@ -173,25 +121,19 @@ class _ReproductionScreenState extends State<ReproductionScreen> {
 }
 
 class ReproductionEventFormScreen extends StatefulWidget {
-  const ReproductionEventFormScreen({
-    super.key,
-    required this.animal,
-    required this.type,
-  });
+  const ReproductionEventFormScreen({super.key, required this.animal, required this.type});
   final Animal animal;
   final String type;
 
   @override
-  State<ReproductionEventFormScreen> createState() =>
-      _ReproductionEventFormScreenState();
+  State<ReproductionEventFormScreen> createState() => _ReproductionEventFormScreenState();
 }
 
-class _ReproductionEventFormScreenState
-    extends State<ReproductionEventFormScreen> {
+class _ReproductionEventFormScreenState extends State<ReproductionEventFormScreen> {
   final _database = DatabaseHelper.instance;
   final _notes = TextEditingController();
   final _bull = TextEditingController();
-  final DateTime _date = DateTime.now();
+  DateTime _date = DateTime.now();
   bool? _pregnancyConfirmed;
   bool _saving = false;
 
@@ -204,16 +146,23 @@ class _ReproductionEventFormScreenState
 
   String get _title {
     switch (widget.type) {
-      case 'saillie':
-        return 'Saillie / IA';
-      case 'diagnostic':
-        return 'Diagnostic de gestation';
-      case 'avortement':
-        return 'Avortement';
-      case 'chaleur':
-        return 'Retour en chaleur';
-      default:
-        return widget.type;
+      case 'saillie': return 'Saillie / IA';
+      case 'diagnostic': return 'Diagnostic de gestation';
+      case 'avortement': return 'Avortement';
+      case 'chaleur': return 'Retour en chaleur';
+      default: return widget.type;
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (value != null && mounted) {
+      setState(() => _date = value);
     }
   }
 
@@ -222,17 +171,14 @@ class _ReproductionEventFormScreenState
     if (id == null) return;
     setState(() => _saving = true);
     try {
-      await _database.insertReproductionEvent(
-        ReproductionEvent(
-          animalId: id,
-          type: widget.type,
-          date: _date,
-          bull: _bull.text.trim().isEmpty ? null : _bull.text.trim(),
-          pregnancyConfirmed:
-              widget.type == 'diagnostic' ? _pregnancyConfirmed : null,
-          notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-        ),
-      );
+      await _database.insertReproductionEvent(ReproductionEvent(
+        animalId: id,
+        type: widget.type,
+        date: _date,
+        bull: _bull.text.trim().isEmpty ? null : _bull.text.trim(),
+        pregnancyConfirmed: widget.type == 'diagnostic' ? _pregnancyConfirmed : null,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      ));
       if (mounted) Navigator.pop(context, true);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -246,60 +192,30 @@ class _ReproductionEventFormScreenState
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ListTile(
-            leading: const Icon(Icons.pets),
-            title: Text(widget.animal.identification),
-            subtitle: Text(_title),
-          ),
+          ListTile(leading: const Icon(Icons.pets), title: Text(widget.animal.identification), subtitle: Text(_title)),
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            onPressed: null,
+            onPressed: _pickDate,
             icon: const Icon(Icons.calendar_month),
-            label: Text(
-              '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
-            ),
+            label: Text('${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}'),
           ),
           if (widget.type == 'saillie') ...[
             const SizedBox(height: 12),
-            TextField(
-              controller: _bull,
-              decoration: const InputDecoration(
-                labelText: 'Taureau / semence',
-                border: OutlineInputBorder(),
-              ),
-            ),
+            TextField(controller: _bull, decoration: const InputDecoration(labelText: 'Taureau / semence', border: OutlineInputBorder())),
           ],
           if (widget.type == 'diagnostic') ...[
             const SizedBox(height: 12),
             SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: true, label: Text('Gestante')),
-                ButtonSegment(value: false, label: Text('Non gestante')),
-              ],
-              selected: _pregnancyConfirmed == null
-                  ? <bool>{}
-                  : {_pregnancyConfirmed!},
+              segments: const [ButtonSegment(value: true, label: Text('Gestante')), ButtonSegment(value: false, label: Text('Non gestante'))],
+              selected: _pregnancyConfirmed == null ? <bool>{} : {_pregnancyConfirmed!},
               emptySelectionAllowed: true,
-              onSelectionChanged: (values) => setState(
-                () => _pregnancyConfirmed = values.isEmpty ? null : values.first,
-              ),
+              onSelectionChanged: (values) => setState(() => _pregnancyConfirmed = values.isEmpty ? null : values.first),
             ),
           ],
           const SizedBox(height: 12),
-          TextField(
-            controller: _notes,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'Notes',
-              border: OutlineInputBorder(),
-            ),
-          ),
+          TextField(controller: _notes, maxLines: 4, decoration: const InputDecoration(labelText: 'Notes', border: OutlineInputBorder())),
           const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: const Icon(Icons.save),
-            label: const Text('Enregistrer'),
-          ),
+          FilledButton.icon(onPressed: _saving ? null : _save, icon: const Icon(Icons.save), label: const Text('Enregistrer')),
         ],
       ),
     );
@@ -320,7 +236,7 @@ class _CalvingFormScreenState extends State<CalvingFormScreen> {
   final _calfId = TextEditingController();
   final _weight = TextEditingController();
   final _notes = TextEditingController();
-  DateTime _date = DateTime.now();
+  final DateTime _date = DateTime.now();
   String _sex = 'Inconnu';
   String? _ease;
   int? _fatherId;
@@ -346,12 +262,7 @@ class _CalvingFormScreenState extends State<CalvingFormScreen> {
     final animals = await _database.getAnimals(includeInactive: false);
     if (!mounted) return;
     setState(() {
-      _bulls = animals
-          .where(
-            (a) =>
-                a.id != widget.animal.id && a.normalizedSex == AnimalSex.male,
-          )
-          .toList();
+      _bulls = animals.where((a) => a.id != widget.animal.id && a.normalizedSex == AnimalSex.male).toList();
     });
   }
 
@@ -361,16 +272,7 @@ class _CalvingFormScreenState extends State<CalvingFormScreen> {
       builder: (context) => SafeArea(
         child: ListView(
           shrinkWrap: true,
-          children: _bulls
-              .map(
-                (bull) => ListTile(
-                  leading: const Icon(Icons.male),
-                  title: Text(bull.identification),
-                  subtitle: Text('Race ${bull.race}'),
-                  onTap: () => Navigator.pop(context, bull),
-                ),
-              )
-              .toList(),
+          children: _bulls.map((bull) => ListTile(leading: const Icon(Icons.male), title: Text(bull.identification), subtitle: Text('Race ${bull.race}'), onTap: () => Navigator.pop(context, bull))).toList(),
         ),
       ),
     );
@@ -387,9 +289,7 @@ class _CalvingFormScreenState extends State<CalvingFormScreen> {
     final weightText = _weight.text.trim().replaceAll(',', '.');
     final weight = weightText.isEmpty ? null : double.tryParse(weightText);
     if (weightText.isNotEmpty && weight == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Poids invalide.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Poids invalide.')));
       return;
     }
     setState(() => _saving = true);
@@ -417,9 +317,7 @@ class _CalvingFormScreenState extends State<CalvingFormScreen> {
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Enregistrement impossible : $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Enregistrement impossible : $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -434,87 +332,21 @@ class _CalvingFormScreenState extends State<CalvingFormScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.female)),
-              title: const Text('Mère'),
-              subtitle: Text(widget.animal.identification),
-            ),
+            ListTile(leading: const CircleAvatar(child: Icon(Icons.female)), title: const Text('Mère'), subtitle: Text(widget.animal.identification)),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _calfId,
-              decoration: const InputDecoration(
-                labelText: 'Numéro du veau',
-                border: OutlineInputBorder(),
-              ),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Numéro obligatoire.'
-                  : null,
-            ),
+            TextFormField(controller: _calfId, decoration: const InputDecoration(labelText: 'Numéro du veau', border: OutlineInputBorder()), validator: (value) => value == null || value.trim().isEmpty ? 'Numéro obligatoire.' : null),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _sex,
-              decoration: const InputDecoration(
-                labelText: 'Sexe du veau',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'Femelle', child: Text('Femelle')),
-                DropdownMenuItem(value: 'Mâle', child: Text('Mâle')),
-                DropdownMenuItem(value: 'Inconnu', child: Text('Inconnu')),
-              ],
-              onChanged: (value) =>
-                  setState(() => _sex = value ?? 'Inconnu'),
-            ),
+            DropdownButtonFormField<String>(initialValue: _sex, decoration: const InputDecoration(labelText: 'Sexe du veau', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'Femelle', child: Text('Femelle')), DropdownMenuItem(value: 'Mâle', child: Text('Mâle')), DropdownMenuItem(value: 'Inconnu', child: Text('Inconnu'))], onChanged: (value) => setState(() => _sex = value ?? 'Inconnu')),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _pickFather,
-              icon: const Icon(Icons.male),
-              label: Text(
-                _father == null
-                    ? 'Sélectionner le père'
-                    : 'Père : ${_father!.identification}',
-              ),
-            ),
+            OutlinedButton.icon(onPressed: _pickFather, icon: const Icon(Icons.male), label: Text(_father == null ? 'Sélectionner le père' : 'Père : ${_father!.identification}')),
             const SizedBox(height: 12),
-            TextField(
-              controller: _weight,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Poids de naissance (kg)',
-                border: OutlineInputBorder(),
-              ),
-            ),
+            TextField(controller: _weight, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Poids de naissance (kg)', border: OutlineInputBorder())),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _ease,
-              decoration: const InputDecoration(
-                labelText: 'Facilité de vêlage',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'Facile', child: Text('Facile')),
-                DropdownMenuItem(value: 'Assisté', child: Text('Assisté')),
-                DropdownMenuItem(value: 'Difficile', child: Text('Difficile')),
-              ],
-              onChanged: (value) => setState(() => _ease = value),
-            ),
+            DropdownButtonFormField<String>(initialValue: _ease, decoration: const InputDecoration(labelText: 'Facilité de vêlage', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'Facile', child: Text('Facile')), DropdownMenuItem(value: 'Assisté', child: Text('Assisté')), DropdownMenuItem(value: 'Difficile', child: Text('Difficile'))], onChanged: (value) => setState(() => _ease = value)),
             const SizedBox(height: 12),
-            TextField(
-              controller: _notes,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                border: OutlineInputBorder(),
-              ),
-            ),
+            TextField(controller: _notes, maxLines: 4, decoration: const InputDecoration(labelText: 'Notes', border: OutlineInputBorder())),
             const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              icon: const Icon(Icons.save),
-              label: Text(
-                _saving ? 'Enregistrement…' : 'Enregistrer le vêlage',
-              ),
-            ),
+            FilledButton.icon(onPressed: _saving ? null : _save, icon: const Icon(Icons.save), label: Text(_saving ? 'Enregistrement…' : 'Enregistrer le vêlage')),
           ],
         ),
       ),
