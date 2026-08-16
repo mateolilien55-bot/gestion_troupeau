@@ -57,18 +57,26 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur de recherche : $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur de recherche : $e')),
+      );
     }
   }
 
   Future<void> _openAnimal(Animal animal) async {
     if (animal.id == null) return;
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => AnimalScreen(animalId: animal.id!)));
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AnimalScreen(animalId: animal.id!)),
+    );
     await _search();
   }
 
   Future<void> _addAnimal() async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const AnimalFormScreen()));
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AnimalFormScreen()),
+    );
     if (result == true) await _search();
   }
 
@@ -83,13 +91,18 @@ class _HomeScreenState extends State<HomeScreen> {
       isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String?>(
-                  value: sex,
+                  initialValue: sex,
                   decoration: const InputDecoration(labelText: 'Sexe'),
                   items: const [
                     DropdownMenuItem(value: null, child: Text('Tous')),
@@ -101,19 +114,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: reproductiveRole,
+                  initialValue: reproductiveRole,
                   decoration: const InputDecoration(labelText: 'Rôle reproducteur'),
                   items: const [
                     DropdownMenuItem(value: null, child: Text('Tous')),
-                    DropdownMenuItem(value: 'Reproducteur', child: Text('Reproducteur')),
-                    DropdownMenuItem(value: 'Non reproducteur', child: Text('Non reproducteur')),
+                    DropdownMenuItem(
+                      value: 'Reproducteur',
+                      child: Text('Reproducteur'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Non reproducteur',
+                      child: Text('Non reproducteur'),
+                    ),
                     DropdownMenuItem(value: 'Inconnu', child: Text('Inconnu')),
                   ],
-                  onChanged: (value) => setSheetState(() => reproductiveRole = value),
+                  onChanged: (value) =>
+                      setSheetState(() => reproductiveRole = value),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: status,
+                  initialValue: status,
                   decoration: const InputDecoration(labelText: 'Statut'),
                   items: const [
                     DropdownMenuItem(value: null, child: Text('Tous')),
@@ -125,14 +145,33 @@ class _HomeScreenState extends State<HomeScreen> {
                   onChanged: (value) => setSheetState(() => status = value),
                 ),
                 const SizedBox(height: 12),
-                TextField(controller: raceController, decoration: const InputDecoration(labelText: 'Race')),
+                TextField(
+                  controller: raceController,
+                  decoration: const InputDecoration(labelText: 'Race'),
+                ),
                 const SizedBox(height: 12),
-                TextField(controller: yearController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Année de naissance')),
+                TextField(
+                  controller: yearController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Année de naissance',
+                  ),
+                ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: TextButton(onPressed: () => Navigator.pop(sheetContext, false), child: const Text('Annuler'))),
-                    Expanded(child: FilledButton(onPressed: () => Navigator.pop(sheetContext, true), child: const Text('Appliquer'))),
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(sheetContext, false),
+                        child: const Text('Annuler'),
+                      ),
+                    ),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(sheetContext, true),
+                        child: const Text('Appliquer'),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -149,6 +188,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _birthYear = int.tryParse(yearController.text.trim());
       await _search();
     }
+    raceController.dispose();
+    yearController.dispose();
   }
 
   @override
@@ -160,16 +201,26 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             tooltip: 'Tableau de bord',
             icon: const Icon(Icons.dashboard_outlined),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DashboardScreen())),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DashboardScreen()),
+            ),
           ),
           IconButton(
             tooltip: 'Sauvegarde',
             icon: const Icon(Icons.backup_outlined),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BackupScreen()),
+            ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(onPressed: _addAnimal, icon: const Icon(Icons.add), label: const Text('Ajouter')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addAnimal,
+        icon: const Icon(Icons.add),
+        label: const Text('Ajouter'),
+      ),
       body: Column(
         children: [
           Padding(
@@ -184,18 +235,33 @@ class _HomeScreenState extends State<HomeScreen> {
                       labelText: 'Rechercher',
                       hintText: 'Numéro, race, mère, père, notes…',
                       prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton.filledTonal(tooltip: 'Filtres', onPressed: _showFilters, icon: const Icon(Icons.tune)),
+                IconButton.filledTonal(
+                  tooltip: 'Filtres',
+                  onPressed: _showFilters,
+                  icon: const Icon(Icons.tune),
+                ),
               ],
             ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(children: [const Icon(Icons.pets), const SizedBox(width: 8), Text('${_animals.length} résultat(s)', style: const TextStyle(fontWeight: FontWeight.bold))]),
+            child: Row(
+              children: [
+                const Icon(Icons.pets),
+                const SizedBox(width: 8),
+                Text(
+                  '${_animals.length} résultat(s)',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           Expanded(
@@ -212,11 +278,23 @@ class _HomeScreenState extends State<HomeScreen> {
                             final animal = _animals[index];
                             final d = animal.dateNaissance;
                             return Card(
-                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 5,
+                              ),
                               child: ListTile(
-                                leading: const CircleAvatar(child: Icon(Icons.pets)),
-                                title: Text(animal.identification, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text('${animal.sexe ?? 'Inconnu'} • ${animal.normalizedReproductiveRole.label} • Race ${animal.race} • ${animal.status}\nNé(e) le ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}'),
+                                leading: const CircleAvatar(
+                                  child: Icon(Icons.pets),
+                                ),
+                                title: Text(
+                                  animal.identification,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${animal.sexe ?? 'Inconnu'} • ${animal.normalizedReproductiveRole.label} • Race ${animal.race} • ${animal.status}\nNé(e) le ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}',
+                                ),
                                 isThreeLine: true,
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () => _openAnimal(animal),
