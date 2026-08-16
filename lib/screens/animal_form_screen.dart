@@ -25,6 +25,10 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
   DateTime? _dateNaissance;
   String _cornes = 'Cornue';
   String? _sexe;
+  int? _motherId;
+  int? _fatherId;
+  List<Animal> _animals = const [];
+  bool _loadingParents = true;
   bool _saving = false;
 
   final List<String> _cornesOptions = const [
@@ -41,17 +45,20 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
   void initState() {
     super.initState();
     final animal = widget.animal;
-    if (animal == null) return;
-
-    _identificationController.text = animal.identification;
-    _raceController.text = animal.race;
-    _sexe = animal.sexe;
-    _premierVelageController.text = animal.premierVelage ?? '';
-    _notesController.text = animal.notes ?? '';
-    _dateNaissance = animal.dateNaissance;
-    _cornes = _cornesOptions.contains(animal.cornes)
-        ? animal.cornes
-        : 'Autre';
+    if (animal != null) {
+      _identificationController.text = animal.identification;
+      _raceController.text = animal.race;
+      _sexe = animal.sexe;
+      _premierVelageController.text = animal.premierVelage ?? '';
+      _notesController.text = animal.notes ?? '';
+      _dateNaissance = animal.dateNaissance;
+      _motherId = animal.motherId;
+      _fatherId = animal.fatherId;
+      _cornes = _cornesOptions.contains(animal.cornes)
+          ? animal.cornes
+          : 'Autre';
+    }
+    _loadAnimals();
   }
 
   @override
@@ -61,6 +68,23 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
     _premierVelageController.dispose();
     _notesController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAnimals() async {
+    try {
+      final animals = await _database.getAnimals();
+      if (!mounted) return;
+      setState(() {
+        _animals = animals;
+        _loadingParents = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingParents = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible de charger la filiation : $e')),
+      );
+    }
   }
 
   Future<void> _selectDate() async {
@@ -77,11 +101,147 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
   String _formatDate(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
+  Animal? _animalById(int? id) {
+    if (id == null) return null;
+    for (final animal in _animals) {
+      if (animal.id == id) return animal;
+    }
+    return null;
+  }
+
+  Set<int> _descendantIds(int rootId) {
+    final descendants = <int>{};
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final animal in _animals) {
+        final id = animal.id;
+        if (id == null || descendants.contains(id)) continue;
+        final directChild = animal.motherId == rootId || animal.fatherId == rootId;
+        final childOfDescendant =
+            (animal.motherId != null && descendants.contains(animal.motherId)) ||
+            (animal.fatherId != null && descendants.contains(animal.fatherId));
+        if (directChild || childOfDescendant) {
+          descendants.add(id);
+          changed = true;
+        }
+      }
+    }
+    return descendants;
+  }
+
+  List<Animal> _parentCandidates({required bool mother}) {
+    final currentId = widget.animal?.id;
+    final forbidden = currentId == null ? <int>{} : _descendantIds(currentId);
+    if (currentId != null) forbidden.add(currentId);
+
+    return _animals.where((animal) {
+      final id = animal.id;
+      if (id == null || forbidden.contains(id)) return false;
+
+      final birthDate = _dateNaissance;
+      if (birthDate != null && !animal.dateNaissance.isBefore(birthDate)) {
+        return false;
+      }
+
+      final sex = animal.sexe;
+      if (mother) {
+        return sex == null || sex == 'Inconnu' || sex == 'Femelle';
+      }
+      return sex == null || sex == 'Inconnu' || sex == 'Mâle';
+    }).toList();
+  }
+
+  Future<void> _selectParent({required bool mother}) async {
+    final candidates = _parentCandidates(mother: mother);
+    final selected = await showModalBottomSheet<int?>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.7,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    mother ? 'Sélectionner la mère' : 'Sélectionner le père',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.clear),
+                  title: const Text('Aucun / inconnu'),
+                  onTap: () => Navigator.pop(sheetContext, -1),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: candidates.isEmpty
+                      ? const Center(child: Text('Aucun parent compatible.'))
+                      : ListView.builder(
+                          itemCount: candidates.length,
+                          itemBuilder: (context, index) {
+                            final animal = candidates[index];
+                            return ListTile(
+                              leading: Icon(mother ? Icons.female : Icons.male),
+                              title: Text(animal.identification),
+                              subtitle: Text(
+                                '${animal.sexe ?? 'Sexe inconnu'} • né(e) le ${_formatDate(animal.dateNaissance)}',
+                              ),
+                              onTap: () => Navigator.pop(sheetContext, animal.id),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selected == null) return;
+    setState(() {
+      final id = selected == -1 ? null : selected;
+      if (mother) {
+        _motherId = id;
+      } else {
+        _fatherId = id;
+      }
+    });
+  }
+
+  Widget _parentField({required bool mother}) {
+    final id = mother ? _motherId : _fatherId;
+    final parent = _animalById(id);
+    final label = mother ? 'Mère' : 'Père';
+
+    return OutlinedButton.icon(
+      onPressed: _loadingParents ? null : () => _selectParent(mother: mother),
+      icon: Icon(mother ? Icons.female : Icons.male),
+      label: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          _loadingParents
+              ? 'Chargement...'
+              : '$label : ${parent?.identification ?? 'Inconnu'}',
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_dateNaissance == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Veuillez sélectionner la date de naissance.')),
+      );
+      return;
+    }
+    if (_motherId != null && _motherId == _fatherId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('La mère et le père doivent être deux animaux différents.')),
       );
       return;
     }
@@ -102,8 +262,8 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
         notes: _notesController.text.trim().isEmpty
             ? null
             : _notesController.text.trim(),
-        motherId: existing?.motherId,
-        fatherId: existing?.fatherId,
+        motherId: _motherId,
+        fatherId: _fatherId,
       );
 
       if (widget.isEditing) {
@@ -201,6 +361,12 @@ class _AnimalFormScreenState extends State<AnimalFormScreen> {
                     : _formatDate(_dateNaissance!)),
               ),
             ),
+            const SizedBox(height: 24),
+            Text('Filiation', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            _parentField(mother: true),
+            const SizedBox(height: 8),
+            _parentField(mother: false),
             const SizedBox(height: 20),
             TextFormField(
               controller: _premierVelageController,
