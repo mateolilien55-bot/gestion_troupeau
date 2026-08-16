@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../database/database.dart';
 import '../models/animal.dart';
 import '../models/weight_record.dart';
+import '../services/sync_queue.dart';
 
 class WeightChartScreen extends StatefulWidget {
   const WeightChartScreen({super.key, required this.animal});
@@ -43,6 +44,8 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
   String _date(DateTime value) =>
       '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
 
+  DateTime _day(DateTime value) => DateTime(value.year, value.month, value.day);
+
   double? get _gainPerDay {
     if (_records.length < 2) return null;
     final first = _records.first;
@@ -52,22 +55,239 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
     return (last.weight - first.weight) / days;
   }
 
+  WeightRecord? _previousRecord(DateTime date) {
+    WeightRecord? previous;
+    for (final record in _records) {
+      if (!record.date.isAfter(date)) previous = record;
+    }
+    return previous;
+  }
+
+  Future<bool> _confirm(String title, String message) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Enregistrer quand même'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _addWeight() async {
+    final animalId = widget.animal.id;
+    if (animalId == null) return;
+
+    final weightController = TextEditingController();
+    final notesController = TextEditingController();
+    var date = DateTime.now();
+
+    final result = await showModalBottomSheet<Map<String, Object?>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            8,
+            20,
+            MediaQuery.of(context).viewInsets.bottom + 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Nouvelle pesée',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text('Animal ${widget.animal.identification}'),
+                if (_records.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Dernière pesée : ${_records.last.weight.toStringAsFixed(1)} kg le ${_date(_records.last.date)}',
+                  ),
+                ],
+                const SizedBox(height: 18),
+                TextField(
+                  controller: weightController,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Poids',
+                    suffixText: 'kg',
+                    prefixIcon: Icon(Icons.monitor_weight_outlined),
+                    border: OutlineInputBorder(),
+                    helperText: 'La virgule et le point sont acceptés.',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: date,
+                      firstDate: widget.animal.dateNaissance,
+                      lastDate: DateTime.now(),
+                      helpText: 'Date de la pesée',
+                    );
+                    if (picked != null) setSheetState(() => date = picked);
+                  },
+                  icon: const Icon(Icons.calendar_month),
+                  label: Text('Date : ${_date(date)}'),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: notesController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Note (facultatif)',
+                    hintText: 'Ex. sortie d’hiver, sevrage, contrôle…',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: () {
+                    final normalized = weightController.text.trim().replaceAll(',', '.');
+                    final weight = double.tryParse(normalized);
+                    if (weight == null || weight <= 0 || weight > 2000) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                        const SnackBar(content: Text('Saisissez un poids valide entre 0 et 2000 kg.')),
+                      );
+                      return;
+                    }
+                    Navigator.pop(sheetContext, {
+                      'weight': weight,
+                      'date': date,
+                      'notes': notesController.text.trim(),
+                    });
+                  },
+                  icon: const Icon(Icons.save),
+                  label: const Text('Enregistrer la pesée'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    weightController.dispose();
+    notesController.dispose();
+    if (result == null) return;
+
+    final weight = result['weight']! as double;
+    final date = result['date']! as DateTime;
+    final notes = result['notes'] as String?;
+    final selectedDay = _day(date);
+
+    final duplicateDate = _records.any((record) => _day(record.date) == selectedDay);
+    if (duplicateDate) {
+      final proceed = await _confirm(
+        'Pesée déjà présente',
+        'Une pesée existe déjà le ${_date(date)} pour cet animal. Voulez-vous enregistrer une deuxième pesée ce jour-là ?',
+      );
+      if (!proceed) return;
+    }
+
+    final previous = _previousRecord(date);
+    if (previous != null && previous.weight > 0) {
+      final difference = weight - previous.weight;
+      final percent = (difference.abs() / previous.weight) * 100;
+      if (percent >= 25) {
+        final sign = difference >= 0 ? '+' : '';
+        final proceed = await _confirm(
+          'Écart de poids important',
+          'La précédente pesée était de ${previous.weight.toStringAsFixed(1)} kg. '
+          'La nouvelle valeur représente ${sign}${difference.toStringAsFixed(1)} kg '
+          '(${sign}${((difference / previous.weight) * 100).toStringAsFixed(0)} %). Vérifiez la saisie.',
+        );
+        if (!proceed) return;
+      }
+    }
+
+    final record = WeightRecord(
+      animalId: animalId,
+      date: date,
+      weight: weight,
+      notes: notes?.isEmpty == true ? null : notes,
+    );
+
+    try {
+      await _database.insertWeightRecord(record);
+      await SyncQueue.enqueue(
+        entity: 'weight_record',
+        operation: 'insert',
+        payload: record.toMap(),
+      );
+      await _load();
+      if (!mounted) return;
+      final delta = previous == null ? null : weight - previous.weight;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            delta == null
+                ? 'Pesée enregistrée : ${weight.toStringAsFixed(1)} kg.'
+                : 'Pesée enregistrée : ${weight.toStringAsFixed(1)} kg (${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(1)} kg).',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible d’enregistrer la pesée : $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Courbe de poids - ${widget.animal.identification}')),
+      appBar: AppBar(title: Text('Poids - ${widget.animal.identification}')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addWeight,
+        icon: const Icon(Icons.add),
+        label: const Text('Nouvelle pesée'),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
                 children: [
                   if (_records.isEmpty)
-                    const Card(
+                    Card(
                       child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text('Aucune pesée enregistrée pour cet animal.'),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.monitor_weight_outlined, size: 44),
+                            const SizedBox(height: 12),
+                            const Text('Aucune pesée enregistrée pour cet animal.'),
+                            const SizedBox(height: 12),
+                            FilledButton.icon(
+                              onPressed: _addWeight,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Enregistrer la première pesée'),
+                            ),
+                          ],
+                        ),
                       ),
                     )
                   else ...[
@@ -91,6 +311,7 @@ class _WeightChartScreenState extends State<WeightChartScreen> {
                             ),
                             const SizedBox(height: 12),
                             Text('Dernier poids : ${_records.last.weight.toStringAsFixed(1)} kg'),
+                            Text('Dernière pesée : ${_date(_records.last.date)}'),
                             if (_gainPerDay != null)
                               Text('Gain moyen : ${(_gainPerDay! * 1000).toStringAsFixed(0)} g/jour'),
                           ],
