@@ -22,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   String? _sex;
   String? _status = 'Actif';
+  String? _reproductiveRole;
   String? _race;
   int? _birthYear;
 
@@ -45,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
         sex: _sex,
         race: _race,
         status: _status,
+        reproductiveRole: _reproductiveRole,
         birthYear: _birthYear,
       );
       if (!mounted) return;
@@ -73,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _showFilters() async {
     String? sex = _sex;
     String? status = _status;
+    String? reproductiveRole = _reproductiveRole;
     final raceController = TextEditingController(text: _race ?? '');
     final yearController = TextEditingController(text: _birthYear?.toString() ?? '');
     final apply = await showModalBottomSheet<bool>(
@@ -81,45 +84,59 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) => Padding(
           padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String?>(
-                value: sex,
-                decoration: const InputDecoration(labelText: 'Sexe'),
-                items: const [
-                  DropdownMenuItem(value: null, child: Text('Tous')),
-                  DropdownMenuItem(value: 'Femelle', child: Text('Femelle')),
-                  DropdownMenuItem(value: 'Mâle', child: Text('Mâle')),
-                  DropdownMenuItem(value: 'Inconnu', child: Text('Inconnu')),
-                ],
-                onChanged: (value) => setSheetState(() => sex = value),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String?>(
-                value: status,
-                decoration: const InputDecoration(labelText: 'Statut'),
-                items: const [
-                  DropdownMenuItem(value: null, child: Text('Tous')),
-                  DropdownMenuItem(value: 'Actif', child: Text('Actif')),
-                  DropdownMenuItem(value: 'Vendu', child: Text('Vendu')),
-                  DropdownMenuItem(value: 'Mort', child: Text('Mort')),
-                  DropdownMenuItem(value: 'Sorti', child: Text('Sorti')),
-                ],
-                onChanged: (value) => setSheetState(() => status = value),
-              ),
-              const SizedBox(height: 12),
-              TextField(controller: raceController, decoration: const InputDecoration(labelText: 'Race')),
-              const SizedBox(height: 12),
-              TextField(controller: yearController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Année de naissance')),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(child: TextButton(onPressed: () => Navigator.pop(sheetContext, false), child: const Text('Annuler'))),
-                  Expanded(child: FilledButton(onPressed: () => Navigator.pop(sheetContext, true), child: const Text('Appliquer'))),
-                ],
-              ),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String?>(
+                  value: sex,
+                  decoration: const InputDecoration(labelText: 'Sexe'),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('Tous')),
+                    DropdownMenuItem(value: 'Femelle', child: Text('Femelle')),
+                    DropdownMenuItem(value: 'Mâle', child: Text('Mâle')),
+                    DropdownMenuItem(value: 'Inconnu', child: Text('Inconnu')),
+                  ],
+                  onChanged: (value) => setSheetState(() => sex = value),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: reproductiveRole,
+                  decoration: const InputDecoration(labelText: 'Rôle reproducteur'),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('Tous')),
+                    DropdownMenuItem(value: 'Reproducteur', child: Text('Reproducteur')),
+                    DropdownMenuItem(value: 'Non reproducteur', child: Text('Non reproducteur')),
+                    DropdownMenuItem(value: 'Inconnu', child: Text('Inconnu')),
+                  ],
+                  onChanged: (value) => setSheetState(() => reproductiveRole = value),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: status,
+                  decoration: const InputDecoration(labelText: 'Statut'),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('Tous')),
+                    DropdownMenuItem(value: 'Actif', child: Text('Actif')),
+                    DropdownMenuItem(value: 'Vendu', child: Text('Vendu')),
+                    DropdownMenuItem(value: 'Mort', child: Text('Mort')),
+                    DropdownMenuItem(value: 'Sorti', child: Text('Sorti')),
+                  ],
+                  onChanged: (value) => setSheetState(() => status = value),
+                ),
+                const SizedBox(height: 12),
+                TextField(controller: raceController, decoration: const InputDecoration(labelText: 'Race')),
+                const SizedBox(height: 12),
+                TextField(controller: yearController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Année de naissance')),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: TextButton(onPressed: () => Navigator.pop(sheetContext, false), child: const Text('Annuler'))),
+                    Expanded(child: FilledButton(onPressed: () => Navigator.pop(sheetContext, true), child: const Text('Appliquer'))),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -127,6 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (apply == true) {
       _sex = sex;
       _status = status;
+      _reproductiveRole = reproductiveRole;
       _race = raceController.text.trim().isEmpty ? null : raceController.text.trim();
       _birthYear = int.tryParse(yearController.text.trim());
       await _search();
@@ -164,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onChanged: (_) => _search(),
                     decoration: InputDecoration(
                       labelText: 'Rechercher',
-                      hintText: 'Numéro, race, notes…',
+                      hintText: 'Numéro, race, mère, père, notes…',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
@@ -198,7 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: ListTile(
                                 leading: const CircleAvatar(child: Icon(Icons.pets)),
                                 title: Text(animal.identification, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text('${animal.sexe ?? 'Inconnu'} • Race ${animal.race} • ${animal.status}\nNé(e) le ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}'),
+                                subtitle: Text('${animal.sexe ?? 'Inconnu'} • ${animal.normalizedReproductiveRole.label} • Race ${animal.race} • ${animal.status}\nNé(e) le ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}'),
                                 isThreeLine: true,
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () => _openAnimal(animal),
