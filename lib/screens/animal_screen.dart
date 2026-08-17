@@ -1,616 +1,340 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../models/animal.dart';
 import '../models/animal_event.dart';
+import '../services/favorite_store.dart';
 import 'animal_event_form_screen.dart';
 import 'animal_form_screen.dart';
+import 'genealogy_screen.dart';
 import 'reproduction_screen.dart';
+import 'weight_chart_screen.dart';
 
 class AnimalScreen extends StatefulWidget {
+  const AnimalScreen({super.key, required this.animalId});
   final int animalId;
-
-  const AnimalScreen({
-    super.key,
-    required this.animalId,
-  });
 
   @override
   State<AnimalScreen> createState() => _AnimalScreenState();
 }
 
 class _AnimalScreenState extends State<AnimalScreen> {
-  final DatabaseHelper _database = DatabaseHelper.instance;
-
+  final _database = DatabaseHelper.instance;
   Animal? _animal;
-  List<AnimalEvent> _events = [];
+  List<AnimalEvent> _events = const [];
+  List<Animal> _children = const [];
+  bool _favorite = false;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _load();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _load() async {
     try {
-      final animal = await _database.getAnimalById(
-        widget.animalId,
-      );
-
-      final events = await _database.getEventsForAnimal(
-        widget.animalId,
-      );
-
+      final animal = await _database.getAnimalById(widget.animalId);
+      final events = await _database.getEventsForAnimal(widget.animalId);
+      final children = await _database.getChildren(widget.animalId);
+      final favorite = await FavoriteStore.isFavorite(widget.animalId);
       if (!mounted) return;
-
       setState(() {
         _animal = animal;
         _events = events;
+        _children = children;
+        _favorite = favorite;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur : $e'),
-        ),
-      );
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur : $e')));
     }
   }
 
-  String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
+  String _date(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
-    return '$day/$month/${date.year}';
+  Future<void> _toggleFavorite() async {
+    final favorite = await FavoriteStore.toggle(widget.animalId);
+    if (mounted) setState(() => _favorite = favorite);
   }
 
-  IconData _eventIcon(String type) {
-    switch (type) {
-      case 'vêlage':
-      case 'velage':
-        return Icons.child_friendly;
-
-      case 'IA / Saillie':
-      case 'saillie':
-        return Icons.favorite;
-
-      case 'Traitement':
-        return Icons.medical_services;
-
-      case 'Poids':
-        return Icons.monitor_weight;
-
-      case 'Observation':
-        return Icons.notes;
-
-      default:
-        return Icons.event;
-    }
+  Future<void> _openAnimal(int? id) async {
+    if (id == null) return;
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => AnimalScreen(animalId: id)));
+    if (mounted) await _load();
   }
 
-Future<void> _editAnimal() async {
-  if (_animal == null) {
-    return;
-  }
-
-  final result = await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => AnimalFormScreen(
-        animal: _animal,
-      ),
-    ),
-  );
-
-  if (result == true) {
-    await _loadData();
-  }
-}
-
-Future<void> _openReproduction() async {
-  if (_animal == null) {
-    return;
-  }
-
-  await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => ReproductionScreen(
-        animal: _animal!,
-      ),
-    ),
-  );
-
-  if (mounted) {
-    await _loadData();
-  }
-}
-
-  Future<void> _deleteAnimal() async {
+  Future<void> _edit() async {
     final animal = _animal;
+    if (animal == null) return;
+    final changed = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AnimalFormScreen(animal: animal)),
+    );
+    if (changed == true) await _load();
+  }
 
-    if (animal == null || animal.id == null) {
-      return;
-    }
+  Future<void> _openReproduction() async {
+    final animal = _animal;
+    if (animal == null) return;
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => ReproductionScreen(animal: animal)));
+    if (mounted) await _load();
+  }
 
+  Future<void> _changeStatus() async {
+    final animal = _animal;
+    if (animal?.id == null) return;
+    final status = await showModalBottomSheet<AnimalStatus>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: AnimalStatus.values
+              .map(
+                (value) => ListTile(
+                  leading: Icon(value == AnimalStatus.active ? Icons.check_circle_outline : Icons.logout),
+                  title: Text(value.label),
+                  trailing: animal!.normalizedStatus == value ? const Icon(Icons.check) : null,
+                  onTap: () => Navigator.pop(context, value),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+    if (status == null) return;
+    await _database.archiveAnimal(animal!.id!, status);
+    await _load();
+  }
+
+  Future<void> _permanentDelete() async {
+    final animal = _animal;
+    if (animal?.id == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            'Supprimer cet animal ?',
-          ),
-          content: Text(
-            'L’animal ${animal.identification} sera supprimé définitivement.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
-              child: const Text(
-                'Annuler',
-              ),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
-              child: const Text(
-                'Supprimer',
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    await _database.deleteAnimal(
-      animal.id!,
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    Navigator.pop(
-      context,
-      true,
-    );
-  }
-  Future<void> _openAnimal(int? animalId) async {
-    if (animalId == null) return;
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AnimalScreen(
-          animalId: animalId,
-        ),
-      ),
-    );
-
-    if (mounted) {
-      await _loadData();
-    }
-  }
-
-  Widget _buildParentRow({
-    required String label,
-    required int? animalId,
-    required IconData icon,
-  }) {
-    if (animalId == null) {
-      return _buildInfoRow(
-        label,
-        'Inconnu',
-      );
-    }
-
-    return FutureBuilder<Animal?>(
-      future: _database.getAnimalById(animalId),
-      builder: (context, snapshot) {
-        final parent = snapshot.data;
-
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(icon),
-            title: Text(label),
-            subtitle: const Text('Chargement...'),
-          );
-        }
-
-        if (parent == null) {
-          return _buildInfoRow(
-            label,
-            'Inconnu',
-          );
-        }
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading: CircleAvatar(
-              child: Icon(icon),
-            ),
-            title: Text(label),
-            subtitle: Text(
-              parent.identification,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            trailing: const Icon(
-              Icons.chevron_right,
-            ),
-            onTap: () {
-              _openAnimal(parent.id);
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildHeader(Animal animal) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            const CircleAvatar(
-              radius: 40,
-              child: Icon(
-                Icons.pets,
-                size: 40,
-              ),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    animal.identification,
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    animal.race,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyLarge,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(
-    String label,
-    String value,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: 6,
-      ),
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(value),
-          ),
+      builder: (context) => AlertDialog(
+        title: const Text('Suppression définitive ?'),
+        content: const Text('Utilisez normalement le statut Vendu, Mort ou Sorti. Cette action efface définitivement la fiche.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Supprimer définitivement')),
         ],
       ),
     );
+    if (confirmed != true) return;
+    await _database.deleteAnimalPermanently(animal!.id!);
+    if (mounted) Navigator.pop(context, true);
   }
 
-  Widget _buildSection({
-    required String title,
-    required IconData icon,
-    required List<Widget> children,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+  Widget _section(String title, IconData icon, List<Widget> children) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon),
+                  const SizedBox(width: 8),
+                  Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ...children,
+            ],
+          ),
+        ),
+      );
+
+  Widget _info(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(icon),
-                const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ...children,
+            SizedBox(width: 130, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+            Expanded(child: Text(value)),
           ],
         ),
-      ),
+      );
+
+  Widget _parent(String label, int? id, IconData icon) {
+    if (id == null) return _info(label, 'Inconnu');
+    return FutureBuilder<Animal?>(
+      future: _database.getAnimalById(id),
+      builder: (context, snapshot) {
+        final parent = snapshot.data;
+        if (parent == null) {
+          return _info(label, snapshot.connectionState == ConnectionState.waiting ? 'Chargement…' : 'Inconnu');
+        }
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: CircleAvatar(child: Icon(icon)),
+          title: Text(label),
+          subtitle: Text(parent.identification),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openAnimal(parent.id),
+        );
+      },
     );
   }
-
-  Widget _buildHistory() {
-    return _buildSection(
-      title: 'Historique',
-      icon: Icons.history,
-      children: [
-        if (_events.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(
-              vertical: 8,
-            ),
-            child: Text(
-              'Aucun événement.',
-            ),
-          )
-        else
-          ..._events.map(
-            (event) {
-              return Card(
-                margin: const EdgeInsets.only(
-                  bottom: 8,
-                ),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    child: Icon(
-                      _eventIcon(event.type),
-                    ),
-                  ),
-                  title: Text(event.type),
-                  subtitle: Text(
-                    _formatDate(event.date),
-                  ),
-                ),
-              );
-            },
-          ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () async {
-              if (_animal?.id == null) return;
-
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AnimalEventFormScreen(
-                    animalId: _animal!.id!,
-                  ),
-                ),
-              );
-
-              if (result == true) {
-                await _loadData();
-              }
-            },
-            icon: const Icon(Icons.add),
-            label: const Text(
-              'Ajouter un événement',
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAnimalPage() {
-  final animal = _animal!;
-
-  return SingleChildScrollView(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildHeader(animal),
-
-        const SizedBox(height: 20),
-
-        _buildSection(
-          title: 'Identification',
-          icon: Icons.badge_outlined,
-          children: [
-            _buildInfoRow(
-              'Numéro',
-              animal.identification,
-            ),
-            _buildInfoRow(
-              'Sexe',
-              animal.sexe ?? 'Inconnu',
-            ),
-            _buildInfoRow(
-              'Race',
-              animal.race,
-            ),
-            _buildInfoRow(
-              'Cornes',
-              animal.cornes,
-            ),
-            _buildInfoRow(
-              'Date de naissance',
-              _formatDate(
-                animal.dateNaissance,
-              ),
-            ),
-
-            // MÈRE CLIQUABLE
-            _buildParentRow(
-              label: 'Mère',
-              animalId: animal.motherId,
-              icon: Icons.female,
-            ),
-
-            // PÈRE CLIQUABLE
-            _buildParentRow(
-              label: 'Père',
-              animalId: animal.fatherId,
-              icon: Icons.male,
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 16),
-
-        _buildSection(
-          title: 'Reproduction',
-          icon: Icons.favorite_outline,
-          children: [
-            _buildInfoRow(
-              'Premier vêlage',
-              animal.premierVelage ??
-                  'Non renseigné',
-            ),
-
-            const SizedBox(height: 8),
-
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _openReproduction,
-                icon: const Icon(
-                  Icons.child_friendly,
-                ),
-                label: const Text(
-                  'Gérer la reproduction',
-                ),
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 16),
-
-        _buildHistory(),
-
-        const SizedBox(height: 16),
-
-        _buildSection(
-          title: 'Notes',
-          icon: Icons.notes,
-          children: [
-            Text(
-              animal.notes?.trim().isNotEmpty == true
-                  ? animal.notes!
-                  : 'Aucune note.',
-              style: TextStyle(
-                color:
-                    animal.notes?.trim().isNotEmpty == true
-                        ? null
-                        : Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 24),
-
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _editAnimal,
-            icon: const Icon(Icons.edit),
-            label: const Text(
-              'Modifier l’animal',
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
 
   @override
   Widget build(BuildContext context) {
+    final animal = _animal;
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _animal?.identification ?? 'Animal',
-        ),
+        title: Text(animal?.identification ?? 'Animal'),
         actions: [
-          if (_animal != null)
+          if (animal != null)
             IconButton(
-              tooltip: 'Modifier',
-              onPressed: _editAnimal,
-              icon: const Icon(
-                Icons.edit,
-              ),
+              tooltip: _favorite ? 'Retirer des animaux à surveiller' : 'Ajouter aux animaux à surveiller',
+              onPressed: _toggleFavorite,
+              icon: Icon(_favorite ? Icons.star : Icons.star_border),
             ),
-          if (_animal != null)
-            IconButton(
-              tooltip: 'Supprimer',
-              onPressed: _deleteAnimal,
-              icon: const Icon(
-                Icons.delete_outline,
-              ),
+          if (animal != null) IconButton(tooltip: 'Modifier', onPressed: _edit, icon: const Icon(Icons.edit)),
+          if (animal != null)
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'status') _changeStatus();
+                if (value == 'delete') _permanentDelete();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'status', child: Text('Changer le statut')),
+                PopupMenuItem(value: 'delete', child: Text('Suppression définitive')),
+              ],
             ),
         ],
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
-          : _animal == null
-              ? const Center(
-                  child: Text(
-                    'Animal introuvable.',
-                  ),
-                )
+          ? const Center(child: CircularProgressIndicator())
+          : animal == null
+              ? const Center(child: Text('Animal introuvable.'))
               : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: _buildAnimalPage(),
+                  onRefresh: _load,
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      Card(
+                        child: ListTile(
+                          leading: const CircleAvatar(radius: 28, child: Icon(Icons.pets)),
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  animal.identification,
+                                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              if (_favorite) const Icon(Icons.star),
+                            ],
+                          ),
+                          subtitle: Text('Race ${animal.race} • ${animal.status} • ${animal.normalizedReproductiveRole.label}'),
+                          trailing: Chip(label: Text(animal.sexe ?? 'Inconnu')),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _section('Identification', Icons.badge_outlined, [
+                        _info('Sexe', animal.sexe ?? 'Inconnu'),
+                        _info('Rôle reproducteur', animal.normalizedReproductiveRole.label),
+                        _info('Race', animal.race),
+                        _info('Cornes', animal.cornes),
+                        _info('Naissance', _date(animal.dateNaissance)),
+                        _info('Statut', animal.status),
+                        if (animal.exitDate != null) _info('Date de sortie', _date(animal.exitDate!)),
+                      ]),
+                      const SizedBox(height: 12),
+                      _section('Filiation', Icons.account_tree_outlined, [
+                        _parent('Mère', animal.motherId, Icons.female),
+                        _parent('Père', animal.fatherId, Icons.male),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.account_tree),
+                            label: const Text('Voir l’arbre généalogique'),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => GenealogyScreen(animal: animal)),
+                            ),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 12),
+                      _section('Descendants', Icons.child_friendly, [
+                        if (_children.isEmpty)
+                          const Text('Aucun descendant enregistré.')
+                        else
+                          ..._children.map(
+                            (child) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const CircleAvatar(child: Icon(Icons.pets)),
+                              title: Text(child.identification),
+                              subtitle: Text('${child.sexe ?? 'Inconnu'} • né(e) le ${_date(child.dateNaissance)}'),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => _openAnimal(child.id),
+                            ),
+                          ),
+                      ]),
+                      const SizedBox(height: 12),
+                      _section('Suivi', Icons.insights_outlined, [
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => WeightChartScreen(animal: animal)),
+                            ),
+                            icon: const Icon(Icons.show_chart),
+                            label: const Text('Voir la courbe de poids'),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 12),
+                      _section('Reproduction', Icons.favorite_outline, [
+                        _info('Premier vêlage', animal.premierVelage ?? 'Non renseigné'),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _openReproduction,
+                            icon: const Icon(Icons.favorite),
+                            label: const Text('Gérer la reproduction'),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 12),
+                      _section('Historique', Icons.history, [
+                        if (_events.isEmpty) const Text('Aucun événement.'),
+                        ..._events.take(10).map(
+                          (event) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.event),
+                            title: Text(event.type),
+                            subtitle: Text('${_date(event.date)}${event.description?.isNotEmpty == true ? ' • ${event.description}' : ''}'),
+                          ),
+                        ),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.add),
+                            label: const Text('Ajouter un événement'),
+                            onPressed: () async {
+                              final changed = await Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => AnimalEventFormScreen(animalId: animal.id!)),
+                              );
+                              if (changed == true) await _load();
+                            },
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 12),
+                      _section('Notes', Icons.notes, [Text(animal.notes?.trim().isNotEmpty == true ? animal.notes! : 'Aucune note.')]),
+                    ],
+                  ),
                 ),
     );
   }
 }
-
-

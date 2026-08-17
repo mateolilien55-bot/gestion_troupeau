@@ -5,240 +5,112 @@ import '../models/animal.dart';
 import '../models/reproduction_event.dart';
 
 class ReproductionScreen extends StatefulWidget {
+  const ReproductionScreen({super.key, required this.animal});
   final Animal animal;
 
-  const ReproductionScreen({
-    super.key,
-    required this.animal,
-  });
-
   @override
-  State<ReproductionScreen> createState() =>
-      _ReproductionScreenState();
+  State<ReproductionScreen> createState() => _ReproductionScreenState();
 }
 
 class _ReproductionScreenState extends State<ReproductionScreen> {
-  final DatabaseHelper _database = DatabaseHelper.instance;
-
-  List<ReproductionEvent> _events = [];
+  final _database = DatabaseHelper.instance;
+  List<ReproductionEvent> _events = const [];
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadEvents();
+    _load();
   }
 
-  Future<void> _loadEvents() async {
-    final animalId = widget.animal.id;
-
-    if (animalId == null) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-      return;
-    }
-
-    try {
-      final events =
-          await _database.getReproductionEventsForAnimal(animalId);
-
-      if (!mounted) return;
-
-      setState(() {
-        _events = events;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur : $e'),
-        ),
-      );
-    }
+  Future<void> _load() async {
+    if (widget.animal.id == null) return;
+    final events = await _database.getReproductionEventsForAnimal(widget.animal.id!);
+    if (!mounted) return;
+    setState(() {
+      _events = events;
+      _loading = false;
+    });
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year}';
-  }
+  String _date(DateTime value) =>
+      '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
 
-  String _eventTitle(ReproductionEvent event) {
-    switch (event.type) {
-      case 'velage':
-        return 'Vêlage';
-      case 'saillie':
-        return 'Saillie';
-      case 'diagnostic':
-        return 'Diagnostic de gestation';
-      default:
-        return event.type;
-    }
-  }
-
-  IconData _eventIcon(String type) {
+  String _title(String type) {
     switch (type) {
-      case 'velage':
-        return Icons.child_friendly;
-      case 'saillie':
-        return Icons.pets;
-      case 'diagnostic':
-        return Icons.biotech;
-      default:
-        return Icons.event;
+      case 'velage': return 'Vêlage';
+      case 'saillie': return 'Saillie / IA';
+      case 'diagnostic': return 'Diagnostic de gestation';
+      case 'avortement': return 'Avortement';
+      case 'chaleur': return 'Retour en chaleur';
+      default: return type;
     }
   }
 
-  Future<void> _addVelage() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => VelageFormScreen(
-          animal: widget.animal,
-        ),
+  IconData _icon(String type) {
+    switch (type) {
+      case 'velage': return Icons.child_friendly;
+      case 'saillie': return Icons.favorite;
+      case 'diagnostic': return Icons.biotech;
+      case 'avortement': return Icons.heart_broken_outlined;
+      case 'chaleur': return Icons.autorenew;
+      default: return Icons.event;
+    }
+  }
+
+  Future<void> _add() async {
+    final type = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.child_friendly), title: const Text('Vêlage'), onTap: () => Navigator.pop(context, 'velage')),
+          ListTile(leading: const Icon(Icons.favorite), title: const Text('Saillie / IA'), onTap: () => Navigator.pop(context, 'saillie')),
+          ListTile(leading: const Icon(Icons.biotech), title: const Text('Diagnostic de gestation'), onTap: () => Navigator.pop(context, 'diagnostic')),
+          ListTile(leading: const Icon(Icons.heart_broken_outlined), title: const Text('Avortement'), onTap: () => Navigator.pop(context, 'avortement')),
+          ListTile(leading: const Icon(Icons.autorenew), title: const Text('Retour en chaleur'), onTap: () => Navigator.pop(context, 'chaleur')),
+        ]),
       ),
     );
-
-    if (result == true && mounted) {
-      await _loadEvents();
-    }
-  }
-
-  Future<void> _showAddMenu() async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.child_friendly),
-                title: const Text('Vêlage'),
-                onTap: () {
-                  Navigator.pop(sheetContext, 'velage');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.pets),
-                title: const Text('Saillie'),
-                onTap: () {
-                  Navigator.pop(sheetContext, 'saillie');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.biotech),
-                title: const Text(
-                  'Diagnostic de gestation',
-                ),
-                onTap: () {
-                  Navigator.pop(sheetContext, 'diagnostic');
-                },
-              ),
-            ],
-          ),
-        );
-      },
+    if (!mounted || type == null) return;
+    final changed = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => type == 'velage'
+            ? CalvingFormScreen(animal: widget.animal)
+            : ReproductionEventFormScreen(animal: widget.animal, type: type),
+      ),
     );
-
-    if (!mounted || choice == null) {
-      return;
-    }
-
-    switch (choice) {
-      case 'velage':
-        await _addVelage();
-        break;
-
-      case 'saillie':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Le formulaire Saillie sera ajouté ensuite.',
-            ),
-          ),
-        );
-        break;
-
-      case 'diagnostic':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Le formulaire Diagnostic sera ajouté ensuite.',
-            ),
-          ),
-        );
-        break;
-    }
+    if (changed == true) await _load();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Reproduction - ${widget.animal.identification}',
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddMenu,
-        child: const Icon(Icons.add),
-      ),
+      appBar: AppBar(title: Text('Reproduction - ${widget.animal.identification}')),
+      floatingActionButton: FloatingActionButton(onPressed: _add, child: const Icon(Icons.add)),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : _events.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Aucun événement de reproduction.',
-                  ),
-                )
+              ? const Center(child: Text('Aucun événement de reproduction.'))
               : RefreshIndicator(
-                  onRefresh: _loadEvents,
+                  onRefresh: _load,
                   child: ListView.builder(
                     padding: const EdgeInsets.all(12),
                     itemCount: _events.length,
                     itemBuilder: (context, index) {
                       final event = _events[index];
-
+                      final details = <String>[_date(event.date)];
+                      if (event.bull?.trim().isNotEmpty == true) details.add('Père/semence : ${event.bull}');
+                      if (event.pregnancyConfirmed != null) details.add(event.pregnancyConfirmed! ? 'Gestation confirmée' : 'Gestation non confirmée');
+                      if (event.calfSex != null) details.add('Veau : ${event.calfSex}');
+                      if (event.calfWeight != null) details.add('${event.calfWeight} kg');
+                      if (event.notes?.trim().isNotEmpty == true) details.add(event.notes!);
                       return Card(
                         child: ListTile(
-                          leading: CircleAvatar(
-                            child: Icon(
-                              _eventIcon(event.type),
-                            ),
-                          ),
-                          title: Text(
-                            _eventTitle(event),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _formatDate(event.date),
-                              ),
-                              if (event.bull != null &&
-                                  event.bull!.trim().isNotEmpty)
-                                Text(
-                                  'Père : ${event.bull}',
-                                ),
-                              if (event.calfId != null)
-                                Text(
-                                  'Veau enregistré',
-                                ),
-                            ],
-                          ),
+                          leading: CircleAvatar(child: Icon(_icon(event.type))),
+                          title: Text(_title(event.type)),
+                          subtitle: Text(details.join('\n')),
+                          isThreeLine: details.length > 2,
                         ),
                       );
                     },
@@ -248,50 +120,129 @@ class _ReproductionScreenState extends State<ReproductionScreen> {
   }
 }
 
-class VelageFormScreen extends StatefulWidget {
+class ReproductionEventFormScreen extends StatefulWidget {
+  const ReproductionEventFormScreen({super.key, required this.animal, required this.type});
   final Animal animal;
-
-  const VelageFormScreen({
-    super.key,
-    required this.animal,
-  });
+  final String type;
 
   @override
-  State<VelageFormScreen> createState() =>
-      _VelageFormScreenState();
+  State<ReproductionEventFormScreen> createState() => _ReproductionEventFormScreenState();
 }
 
-class _VelageFormScreenState extends State<VelageFormScreen> {
-  final DatabaseHelper _database = DatabaseHelper.instance;
-
-  final GlobalKey<FormState> _formKey =
-      GlobalKey<FormState>();
-
-  final TextEditingController _veauController =
-      TextEditingController();
-
-  final TextEditingController _poidsController =
-      TextEditingController();
-
-  final TextEditingController _notesController =
-      TextEditingController();
-
-  final TextEditingController _taureauController =
-      TextEditingController();
-
+class _ReproductionEventFormScreenState extends State<ReproductionEventFormScreen> {
+  final _database = DatabaseHelper.instance;
+  final _notes = TextEditingController();
+  final _bull = TextEditingController();
   DateTime _date = DateTime.now();
-
-  String? _sexeVeau;
-  String? _faciliteVelage;
-
+  bool? _pregnancyConfirmed;
   bool _saving = false;
 
-  int? _selectedFatherId;
+  @override
+  void dispose() {
+    _notes.dispose();
+    _bull.dispose();
+    super.dispose();
+  }
 
-  List<Animal> _bulls = [];
-  Animal? _selectedBull;
+  String get _title {
+    switch (widget.type) {
+      case 'saillie': return 'Saillie / IA';
+      case 'diagnostic': return 'Diagnostic de gestation';
+      case 'avortement': return 'Avortement';
+      case 'chaleur': return 'Retour en chaleur';
+      default: return widget.type;
+    }
+  }
 
-  bool _loadingBulls = true;
+  Future<void> _pickDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (value != null && mounted) {
+      setState(() => _date = value);
+    }
+  }
+
+  Future<void> _save() async {
+    final id = widget.animal.id;
+    if (id == null) return;
+    setState(() => _saving = true);
+    try {
+      await _database.insertReproductionEvent(ReproductionEvent(
+        animalId: id,
+        type: widget.type,
+        date: _date,
+        bull: _bull.text.trim().isEmpty ? null : _bull.text.trim(),
+        pregnancyConfirmed: widget.type == 'diagnostic' ? _pregnancyConfirmed : null,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      ));
+      if (mounted) Navigator.pop(context, true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(_title)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ListTile(leading: const Icon(Icons.pets), title: Text(widget.animal.identification), subtitle: Text(_title)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _pickDate,
+            icon: const Icon(Icons.calendar_month),
+            label: Text('${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}'),
+          ),
+          if (widget.type == 'saillie') ...[
+            const SizedBox(height: 12),
+            TextField(controller: _bull, decoration: const InputDecoration(labelText: 'Taureau / semence', border: OutlineInputBorder())),
+          ],
+          if (widget.type == 'diagnostic') ...[
+            const SizedBox(height: 12),
+            SegmentedButton<bool>(
+              segments: const [ButtonSegment(value: true, label: Text('Gestante')), ButtonSegment(value: false, label: Text('Non gestante'))],
+              selected: _pregnancyConfirmed == null ? <bool>{} : {_pregnancyConfirmed!},
+              emptySelectionAllowed: true,
+              onSelectionChanged: (values) => setState(() => _pregnancyConfirmed = values.isEmpty ? null : values.first),
+            ),
+          ],
+          const SizedBox(height: 12),
+          TextField(controller: _notes, maxLines: 4, decoration: const InputDecoration(labelText: 'Notes', border: OutlineInputBorder())),
+          const SizedBox(height: 20),
+          FilledButton.icon(onPressed: _saving ? null : _save, icon: const Icon(Icons.save), label: const Text('Enregistrer')),
+        ],
+      ),
+    );
+  }
+}
+
+class CalvingFormScreen extends StatefulWidget {
+  const CalvingFormScreen({super.key, required this.animal});
+  final Animal animal;
+
+  @override
+  State<CalvingFormScreen> createState() => _CalvingFormScreenState();
+}
+
+class _CalvingFormScreenState extends State<CalvingFormScreen> {
+  final _database = DatabaseHelper.instance;
+  final _formKey = GlobalKey<FormState>();
+  final _calfId = TextEditingController();
+  final _weight = TextEditingController();
+  final _notes = TextEditingController();
+  final DateTime _date = DateTime.now();
+  String _sex = 'Inconnu';
+  String? _ease;
+  int? _fatherId;
+  Animal? _father;
+  List<Animal> _bulls = const [];
+  bool _saving = false;
 
   @override
   void initState() {
@@ -301,510 +252,101 @@ class _VelageFormScreenState extends State<VelageFormScreen> {
 
   @override
   void dispose() {
-    _veauController.dispose();
-    _poidsController.dispose();
-    _notesController.dispose();
-    _taureauController.dispose();
+    _calfId.dispose();
+    _weight.dispose();
+    _notes.dispose();
     super.dispose();
   }
 
   Future<void> _loadBulls() async {
-    try {
-      final animals = await _database.getAnimals();
-
-      if (!mounted) return;
-
-      /*
-       * Pour l'instant, on considère comme taureaux les animaux
-       * dont l'identification est disponible dans la table.
-       *
-       * Si ton modèle possède ensuite un vrai champ "sexe",
-       * on pourra filtrer précisément les mâles.
-       */
-      setState(() {
-        _bulls = animals
-          .where(
-            (animal) =>
-              animal.id != null &&
-              animal.id != widget.animal.id &&
-              animal.sexe == 'Mâle',
-          )
-          .toList();
-
-        _loadingBulls = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _loadingBulls = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible de charger les taureaux : $e',
-          ),
-        ),
-      );
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year}';
-  }
-
-  Future<void> _selectDate() async {
-    final selected = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(
-        const Duration(days: 365),
-      ),
-    );
-
-    if (selected == null || !mounted) {
-      return;
-    }
-
+    final animals = await _database.getAnimals(includeInactive: false);
+    if (!mounted) return;
     setState(() {
-      _date = selected;
+      _bulls = animals.where((a) => a.id != widget.animal.id && a.normalizedSex == AnimalSex.male).toList();
     });
   }
 
-  Future<void> _selectBull() async {
-    if (_bulls.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Aucun animal disponible pour sélectionner le père.',
-          ),
-        ),
-      );
-      return;
-    }
-
+  Future<void> _pickFather() async {
     final selected = await showModalBottomSheet<Animal>(
       context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: SizedBox(
-            height: MediaQuery.of(sheetContext).size.height * 0.7,
-            child: Column(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    'Sélectionner le père',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const Divider(),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _bulls.length,
-                    itemBuilder: (context, index) {
-                      final bull = _bulls[index];
-
-                      return ListTile(
-                        leading: const CircleAvatar(
-                          child: Icon(Icons.pets),
-                        ),
-                        title: Text(
-                          bull.identification,
-                        ),
-                        subtitle: Text(
-                          'Race ${bull.race}',
-                        ),
-                        trailing:
-                            _selectedFatherId == bull.id
-                                ? const Icon(
-                                    Icons.check,
-                                  )
-                                : null,
-                        onTap: () {
-                          Navigator.pop(
-                            sheetContext,
-                            bull,
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: _bulls.map((bull) => ListTile(leading: const Icon(Icons.male), title: Text(bull.identification), subtitle: Text('Race ${bull.race}'), onTap: () => Navigator.pop(context, bull))).toList(),
+        ),
+      ),
     );
-
-    if (selected == null || !mounted) {
-      return;
+    if (selected != null && mounted) {
+      setState(() {
+        _father = selected;
+        _fatherId = selected.id;
+      });
     }
-
-    setState(() {
-      _selectedBull = selected;
-      _selectedFatherId = selected.id;
-      _taureauController.text = selected.identification;
-    });
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) {
+    if (!_formKey.currentState!.validate() || widget.animal.id == null) return;
+    final weightText = _weight.text.trim().replaceAll(',', '.');
+    final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+    if (weightText.isNotEmpty && weight == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Poids invalide.')));
       return;
     }
-
-    final motherId = widget.animal.id;
-
-    if (motherId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Impossible d'enregistrer le vêlage : "
-            "la vache n'a pas d'identifiant.",
-          ),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _saving = true;
-    });
-
+    setState(() => _saving = true);
     try {
-      final calfIdentification =
-          _veauController.text.trim();
-
-      final calfWeightText =
-          _poidsController.text.trim().replaceAll(',', '.');
-
-      final calfWeight = calfWeightText.isEmpty
-          ? null
-          : double.tryParse(calfWeightText);
-
-      if (calfWeightText.isNotEmpty && calfWeight == null) {
-        throw Exception('Poids du veau invalide.');
-      }
-
-      /*
-       * Création du veau.
-       *
-       * motherId = mère actuelle
-       * fatherId = taureau sélectionné
-       */
       final calf = Animal(
-        identification: calfIdentification,
+        identification: _calfId.text.trim(),
         cornes: 'À définir',
         dateNaissance: _date,
         race: widget.animal.race,
-        sexe: _sexeVeau,
-        motherId: motherId,
-        fatherId: _selectedFatherId,
+        sexe: _sex,
+        motherId: widget.animal.id,
+        fatherId: _fatherId,
       );
-
-      final calfId = await _insertAnimal(calf);
-
-      /*
-       * Création de l'événement de vêlage.
-       */
       final event = ReproductionEvent(
-        animalId: motherId,
+        animalId: widget.animal.id!,
         type: 'velage',
         date: _date,
-        bull: _taureauController.text.trim().isEmpty
-            ? null
-            : _taureauController.text.trim(),
-        calfId: calfId,
-        calfSex: _sexeVeau,
-        calvingEase: _faciliteVelage,
-        calfWeight: calfWeight,
-        notes: _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim(),
+        bull: _father?.identification,
+        calfSex: _sex,
+        calvingEase: _ease,
+        calfWeight: weight,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       );
-
-      await _database.insertReproductionEvent(event);
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Vêlage enregistré et veau créé.',
-          ),
-        ),
-      );
-
-      Navigator.pop(context, true);
+      await _database.recordCalving(calf: calf, event: event);
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        _saving = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            "Erreur lors de l'enregistrement : $e",
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Enregistrement impossible : $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-  }
-
-  Future<int> _insertAnimal(Animal animal) async {
-    final db = await _database.database;
-
-    return db.insert(
-      'animals',
-      animal.toMap(),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Nouveau vêlage'),
-      ),
+      appBar: AppBar(title: const Text('Nouveau vêlage')),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    const CircleAvatar(
-                      child: Icon(Icons.pets),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Mère',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.animal.identification,
-                            style: const TextStyle(
-                              fontSize: 18,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            TextFormField(
-              controller: _veauController,
-              decoration: const InputDecoration(
-                labelText: 'Numéro du veau',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.tag),
-              ),
-              validator: (value) {
-                if (value == null ||
-                    value.trim().isEmpty) {
-                  return 'Indiquez le numéro du veau.';
-                }
-
-                return null;
-              },
-            ),
-
-            const SizedBox(height: 16),
-
-            InkWell(
-              onTap: _selectDate,
-              borderRadius: BorderRadius.circular(12),
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Date du vêlage',
-                  border: OutlineInputBorder(),
-                  prefixIcon:
-                      Icon(Icons.calendar_today),
-                ),
-                child: Text(
-                  _formatDate(_date),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            /*
-             * Sélection du père.
-             */
-            InkWell(
-              onTap: _loadingBulls
-                  ? null
-                  : _selectBull,
-              borderRadius: BorderRadius.circular(12),
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Père / Taureau',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.pets),
-                  suffixIcon:
-                      Icon(Icons.arrow_drop_down),
-                ),
-                child: Text(
-                  _selectedBull?.identification ??
-                      'Sélectionner le père',
-                  style: TextStyle(
-                    color: _selectedBull == null
-                        ? Colors.grey.shade600
-                        : null,
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            DropdownButtonFormField<String>(
-              initialValue: _sexeVeau,
-              decoration: const InputDecoration(
-              labelText: 'Sexe du veau',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.pets),
-            ),
-            items: const [
-            DropdownMenuItem(
-              value: 'Mâle',
-              child: Text('Mâle'),
-            ),
-            DropdownMenuItem(
-              value: 'Femelle',
-              child: Text('Femelle'),
-            ),
-          ],
-          validator: (value) {
-          if (value == null || value.isEmpty) {
-          return 'Sélectionnez le sexe du veau.';
-          }
-
-         return null;
-      },
-  onChanged: (value) {
-    setState(() {
-      _sexeVeau = value;
-    });
-  },
-),
-
-            const SizedBox(height: 16),
-
-            DropdownButtonFormField<String>(
-              initialValue: _faciliteVelage,
-              decoration: const InputDecoration(
-                labelText: 'Facilité du vêlage',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.child_friendly),
-              ),
-              items: const [
-                DropdownMenuItem(
-                  value: 'Facile',
-                  child: Text('Facile'),
-                ),
-                DropdownMenuItem(
-                  value: 'Avec aide',
-                  child: Text('Avec aide'),
-                ),
-                DropdownMenuItem(
-                  value: 'Difficile',
-                  child: Text('Difficile'),
-                ),
-                DropdownMenuItem(
-                  value: 'Césarienne',
-                  child: Text('Césarienne'),
-                ),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  _faciliteVelage = value;
-                });
-              },
-            ),
-
-            const SizedBox(height: 16),
-
-            TextFormField(
-              controller: _poidsController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Poids du veau (kg)',
-                border: OutlineInputBorder(),
-                prefixIcon:
-                    Icon(Icons.monitor_weight),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            TextFormField(
-              controller: _notesController,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                hintText:
-                    'Observations concernant le vêlage...',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.notes),
-                alignLabelWithHint: true,
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _saving ? null : _save,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child:
-                            CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(Icons.save),
-                label: Text(
-                  _saving
-                      ? 'Enregistrement...'
-                      : 'Enregistrer le vêlage',
-                ),
-              ),
-            ),
+            ListTile(leading: const CircleAvatar(child: Icon(Icons.female)), title: const Text('Mère'), subtitle: Text(widget.animal.identification)),
+            const SizedBox(height: 12),
+            TextFormField(controller: _calfId, decoration: const InputDecoration(labelText: 'Numéro du veau', border: OutlineInputBorder()), validator: (value) => value == null || value.trim().isEmpty ? 'Numéro obligatoire.' : null),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(initialValue: _sex, decoration: const InputDecoration(labelText: 'Sexe du veau', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'Femelle', child: Text('Femelle')), DropdownMenuItem(value: 'Mâle', child: Text('Mâle')), DropdownMenuItem(value: 'Inconnu', child: Text('Inconnu'))], onChanged: (value) => setState(() => _sex = value ?? 'Inconnu')),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(onPressed: _pickFather, icon: const Icon(Icons.male), label: Text(_father == null ? 'Sélectionner le père' : 'Père : ${_father!.identification}')),
+            const SizedBox(height: 12),
+            TextField(controller: _weight, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Poids de naissance (kg)', border: OutlineInputBorder())),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(initialValue: _ease, decoration: const InputDecoration(labelText: 'Facilité de vêlage', border: OutlineInputBorder()), items: const [DropdownMenuItem(value: 'Facile', child: Text('Facile')), DropdownMenuItem(value: 'Assisté', child: Text('Assisté')), DropdownMenuItem(value: 'Difficile', child: Text('Difficile'))], onChanged: (value) => setState(() => _ease = value)),
+            const SizedBox(height: 12),
+            TextField(controller: _notes, maxLines: 4, decoration: const InputDecoration(labelText: 'Notes', border: OutlineInputBorder())),
+            const SizedBox(height: 20),
+            FilledButton.icon(onPressed: _saving ? null : _save, icon: const Icon(Icons.save), label: Text(_saving ? 'Enregistrement…' : 'Enregistrer le vêlage')),
           ],
         ),
       ),

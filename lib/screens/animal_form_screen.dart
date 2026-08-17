@@ -4,191 +4,311 @@ import '../database/database.dart';
 import '../models/animal.dart';
 
 class AnimalFormScreen extends StatefulWidget {
+  const AnimalFormScreen({super.key, this.animal});
   final Animal? animal;
-
-  const AnimalFormScreen({
-    super.key,
-    this.animal,
-  });
-
   bool get isEditing => animal != null;
 
   @override
-  State<AnimalFormScreen> createState() =>
-      _AnimalFormScreenState();
+  State<AnimalFormScreen> createState() => _AnimalFormScreenState();
 }
 
-class _AnimalFormScreenState
-    extends State<AnimalFormScreen> {
+class _AnimalFormScreenState extends State<AnimalFormScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _identification = TextEditingController();
+  final _race = TextEditingController();
+  final _premierVelage = TextEditingController();
+  final _notes = TextEditingController();
+  final _database = DatabaseHelper.instance;
 
-  final _identificationController =
-      TextEditingController();
-
-  final _raceController =
-      TextEditingController();
-
-  final _premierVelageController =
-      TextEditingController();
-
-  final _notesController =
-      TextEditingController();
-
-  final DatabaseHelper _database =
-      DatabaseHelper.instance;
-
-  DateTime? _dateNaissance;
-
-  String _cornes = 'Cornue';
-
-String? _sexe;
-
+  DateTime? _birthDate;
+  String _horns = 'Cornue';
+  String _sex = 'Inconnu';
+  String _reproductiveRole = 'Inconnu';
+  int? _motherId;
+  int? _fatherId;
+  List<Animal> _animals = const [];
+  bool _loadingParents = true;
   bool _saving = false;
 
-  final List<String> _cornesOptions = [
+  static const _hornOptions = [
     'Cornue',
+    'Demi-cornue',
     'Demie cornue',
     'Sans corne H',
     'Sans corne F',
+    'À définir',
     'Autre',
   ];
 
   @override
   void initState() {
     super.initState();
-
     final animal = widget.animal;
-
     if (animal != null) {
-      _identificationController.text =
-          animal.identification;
-
-      _raceController.text = animal.race;
-
-_sexe = animal.sexe;
-
-      _premierVelageController.text =
-          animal.premierVelage ?? '';
-
-      _notesController.text =
-          animal.notes ?? '';
-
-      _dateNaissance =
-          animal.dateNaissance;
-
-      if (_cornesOptions.contains(
-        animal.cornes,
-      )) {
-        _cornes = animal.cornes;
-      } else {
-        _cornes = 'Autre';
-      }
+      _identification.text = animal.identification;
+      _race.text = animal.race;
+      _premierVelage.text = animal.premierVelage ?? '';
+      _notes.text = animal.notes ?? '';
+      _birthDate = animal.dateNaissance;
+      _sex = animal.normalizedSex.label;
+      _reproductiveRole = animal.normalizedReproductiveRole.label;
+      _motherId = animal.motherId;
+      _fatherId = animal.fatherId;
+      _horns = _hornOptions.contains(animal.cornes) ? animal.cornes : 'Autre';
     }
+    _loadAnimals();
   }
 
   @override
   void dispose() {
-    _identificationController.dispose();
-    _raceController.dispose();
-    _premierVelageController.dispose();
-    _notesController.dispose();
+    _identification.dispose();
+    _race.dispose();
+    _premierVelage.dispose();
+    _notes.dispose();
     super.dispose();
   }
 
-  Future<void> _selectDate() async {
-    final date = await showDatePicker(
+  Future<void> _loadAnimals() async {
+    try {
+      final values = await _database.getAnimals();
+      if (!mounted) return;
+      setState(() {
+        _animals = values;
+        _loadingParents = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingParents = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible de charger la filiation : $e')),
+      );
+    }
+  }
+
+  String _date(DateTime value) =>
+      '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+
+  Future<void> _pickBirthDate() async {
+    final value = await showDatePicker(
       context: context,
-      initialDate:
-          _dateNaissance ?? DateTime(2020),
+      initialDate: _birthDate ?? DateTime.now(),
       firstDate: DateTime(1950),
       lastDate: DateTime.now(),
       helpText: 'Date de naissance',
     );
+    if (value != null && mounted) {
+      setState(() => _birthDate = value);
+    }
+  }
 
-    if (date == null) return;
+  Animal? _byId(int? id) {
+    if (id == null) return null;
+    for (final animal in _animals) {
+      if (animal.id == id) return animal;
+    }
+    return null;
+  }
 
+  Set<int> _descendantIds(int rootId) {
+    final result = <int>{};
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final animal in _animals) {
+        final id = animal.id;
+        if (id == null || result.contains(id)) continue;
+        final direct = animal.motherId == rootId || animal.fatherId == rootId;
+        final indirect =
+            (animal.motherId != null && result.contains(animal.motherId)) ||
+            (animal.fatherId != null && result.contains(animal.fatherId));
+        if (direct || indirect) {
+          result.add(id);
+          changed = true;
+        }
+      }
+    }
+    return result;
+  }
+
+  List<Animal> _candidates(bool mother) {
+    final currentId = widget.animal?.id;
+    final forbidden = currentId == null
+        ? <int>{}
+        : (_descendantIds(currentId)..add(currentId));
+
+    return _animals.where((animal) {
+      final id = animal.id;
+      if (id == null ||
+          forbidden.contains(id) ||
+          !animal.isActive ||
+          !animal.canReproduce) {
+        return false;
+      }
+      if (_birthDate != null && !animal.dateNaissance.isBefore(_birthDate!)) {
+        return false;
+      }
+      final sex = animal.normalizedSex;
+      return mother
+          ? sex == AnimalSex.female || sex == AnimalSex.unknown
+          : sex == AnimalSex.male || sex == AnimalSex.unknown;
+    }).toList();
+  }
+
+  Future<void> _selectParent(bool mother) async {
+    final candidates = _candidates(mother);
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * .7,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  mother ? 'Sélectionner la mère' : 'Sélectionner le père',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.clear),
+                title: const Text('Inconnu / retirer le lien'),
+                onTap: () => Navigator.pop(context, -1),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: candidates.isEmpty
+                    ? const Center(child: Text('Aucun parent compatible.'))
+                    : ListView.builder(
+                        itemCount: candidates.length,
+                        itemBuilder: (context, index) {
+                          final animal = candidates[index];
+                          return ListTile(
+                            leading: Icon(mother ? Icons.female : Icons.male),
+                            title: Text(animal.identification),
+                            subtitle: Text(
+                              '${animal.normalizedSex.label} • ${animal.normalizedReproductiveRole.label} • né(e) le ${_date(animal.dateNaissance)}',
+                            ),
+                            onTap: () => Navigator.pop(context, animal.id),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
     setState(() {
-      _dateNaissance = date;
+      final value = selected == -1 ? null : selected;
+      if (mother) {
+        _motherId = value;
+      } else {
+        _fatherId = value;
+      }
     });
   }
 
-  String _formatDate(DateTime date) {
-    final day =
-        date.day.toString().padLeft(2, '0');
+  Widget _parentButton(bool mother) {
+    final parent = _byId(mother ? _motherId : _fatherId);
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _loadingParents ? null : () => _selectParent(mother),
+        icon: Icon(mother ? Icons.female : Icons.male),
+        label: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            '${mother ? 'Mère' : 'Père'} : ${parent?.identification ?? 'Inconnu'}',
+          ),
+        ),
+      ),
+    );
+  }
 
-    final month =
-        date.month.toString().padLeft(2, '0');
-
-    return '$day/$month/${date.year}';
+  Future<bool> _confirmGenealogyChange() async {
+    final existing = widget.animal;
+    if (existing == null ||
+        (existing.motherId == _motherId && existing.fatherId == _fatherId)) {
+      return true;
+    }
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Modifier la filiation ?'),
+            content: const Text(
+              'Cette modification change la branche généalogique de cet animal et peut modifier les arbres de ses descendants.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Confirmer'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    if (_dateNaissance == null) {
+    if (!_formKey.currentState!.validate()) return;
+    if (_birthDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Veuillez sélectionner la date de naissance.',
-          ),
+          content: Text('Veuillez sélectionner la date de naissance.'),
         ),
       );
       return;
     }
-
-    setState(() {
-      _saving = true;
-    });
-
-    try {
-      final animal = Animal(
-        id: widget.animal?.id,
-        identification:
-            _identificationController.text.trim(),
-        cornes: _cornes,
-        dateNaissance: _dateNaissance!,
-        race: _raceController.text.trim(),
-sexe: _sexe,
-        premierVelage:
-            _premierVelageController.text
-                .trim()
-                .isEmpty
-                ? null
-                : _premierVelageController.text
-                    .trim(),
-        notes:
-            _notesController.text.trim().isEmpty
-                ? null
-                : _notesController.text.trim(),
+    if (_motherId != null && _motherId == _fatherId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('La mère et le père doivent être différents.'),
+        ),
       );
+      return;
+    }
+    if (!await _confirmGenealogyChange()) return;
 
+    setState(() => _saving = true);
+    try {
+      final existing = widget.animal;
+      final animal = Animal(
+        id: existing?.id,
+        identification: _identification.text.trim(),
+        cornes: _horns,
+        dateNaissance: _birthDate!,
+        race: _race.text.trim(),
+        sexe: _sex,
+        reproductiveRole: _reproductiveRole,
+        premierVelage: _premierVelage.text.trim().isEmpty
+            ? null
+            : _premierVelage.text.trim(),
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        motherId: _motherId,
+        fatherId: _fatherId,
+        status: existing?.status ?? AnimalStatus.active.label,
+        exitDate: existing?.exitDate,
+      );
       if (widget.isEditing) {
         await _database.updateAnimal(animal);
       } else {
         await _database.insertAnimal(animal);
       }
-
-      if (!mounted) return;
-
-      Navigator.pop(context, true);
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible d’enregistrer : $e',
-          ),
-        ),
+        SnackBar(content: Text('Impossible d’enregistrer : $e')),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -196,11 +316,7 @@ sexe: _sexe,
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.isEditing
-              ? 'Modifier l’animal'
-              : 'Ajouter un animal',
-        ),
+        title: Text(widget.isEditing ? 'Modifier l’animal' : 'Ajouter un animal'),
       ),
       body: Form(
         key: _formKey,
@@ -208,176 +324,136 @@ sexe: _sexe,
           padding: const EdgeInsets.all(20),
           children: [
             TextFormField(
-              controller:
-                  _identificationController,
+              controller: _identification,
               decoration: const InputDecoration(
-                labelText:
-                    'Numéro d’identification',
-                hintText: 'Ex. 2337',
-                prefixIcon:
-                    Icon(Icons.badge_outlined),
+                labelText: 'Numéro d’identification',
+                prefixIcon: Icon(Icons.badge_outlined),
                 border: OutlineInputBorder(),
               ),
-              validator: (value) {
-                if (value == null ||
-                    value.trim().isEmpty) {
-                  return 'Le numéro est obligatoire.';
-                }
-
-                return null;
-              },
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Le numéro est obligatoire.'
+                  : null,
             ),
-
-            const SizedBox(height: 20),
-
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              initialValue: _cornes,
+              initialValue: _sex,
+              decoration: const InputDecoration(
+                labelText: 'Sexe',
+                prefixIcon: Icon(Icons.wc),
+                border: OutlineInputBorder(),
+              ),
+              items: AnimalSex.values
+                  .map(
+                    (sex) => DropdownMenuItem(
+                      value: sex.label,
+                      child: Text(sex.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) =>
+                  setState(() => _sex = value ?? AnimalSex.unknown.label),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _reproductiveRole,
+              decoration: const InputDecoration(
+                labelText: 'Rôle reproducteur',
+                prefixIcon: Icon(Icons.favorite_outline),
+                border: OutlineInputBorder(),
+              ),
+              items: ReproductiveRole.values
+                  .map(
+                    (role) => DropdownMenuItem(
+                      value: role.label,
+                      child: Text(role.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) => setState(
+                () => _reproductiveRole =
+                    value ?? ReproductiveRole.unknown.label,
+              ),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _horns,
               decoration: const InputDecoration(
                 labelText: 'Cornes',
-                prefixIcon:
-                    Icon(Icons.pets),
+                prefixIcon: Icon(Icons.pets),
                 border: OutlineInputBorder(),
               ),
-              items: _cornesOptions.map(
-                (value) {
-                  return DropdownMenuItem(
-                    value: value,
-                    child: Text(value),
-                  );
-                },
-              ).toList(),
-              onChanged: (value) {
-                if (value == null) return;
-
-                setState(() {
-                  _cornes = value;
-                });
-              },
+              items: _hornOptions
+                  .map(
+                    (value) => DropdownMenuItem(
+                      value: value,
+                      child: Text(value),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) => setState(() => _horns = value ?? _horns),
             ),
-
-            const SizedBox(height: 20),
-
-            DropdownButtonFormField<String>(
-             initialValue: _sexe,
-             decoration: const InputDecoration(
-              labelText: 'Sexe',
-              prefixIcon: Icon(Icons.wc),
-              border: OutlineInputBorder(),
-            ),
-            items: const [
-            DropdownMenuItem(
-              value: 'Femelle',
-              child: Text('Femelle'),
-              ),
-            DropdownMenuItem(
-                value: 'Mâle',
-                child: Text('Mâle'),
-                ),
-            DropdownMenuItem(
-              value: 'Inconnu',
-              child: Text('Inconnu'),
-            ),
-          ],
-            onChanged: (value) {
-    setState(() {
-      _sexe = value;
-    });
-  },
-            ),TextFormField(
-              controller: _raceController,
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _race,
               decoration: const InputDecoration(
                 labelText: 'Race',
-                hintText: 'Ex. 38',
                 border: OutlineInputBorder(),
               ),
-              validator: (value) {
-                if (value == null ||
-                    value.trim().isEmpty) {
-                  return 'La race est obligatoire.';
-                }
-
-                return null;
-              },
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'La race est obligatoire.'
+                  : null,
             ),
-
-            const SizedBox(height: 20),
-
-            InkWell(
-              onTap: _selectDate,
-              child: InputDecorator(
-                decoration:
-                    const InputDecoration(
-                  labelText:
-                      'Date de naissance',
-                  prefixIcon:
-                      Icon(Icons.calendar_month),
-                  border: OutlineInputBorder(),
-                ),
-                child: Text(
-                  _dateNaissance == null
-                      ? 'Sélectionner une date'
-                      : _formatDate(
-                          _dateNaissance!,
-                        ),
-                ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _pickBirthDate,
+              icon: const Icon(Icons.calendar_month),
+              label: Text(
+                _birthDate == null
+                    ? 'Sélectionner la date de naissance'
+                    : 'Naissance : ${_date(_birthDate!)}',
               ),
             ),
-
-            const SizedBox(height: 20),
-
+            const SizedBox(height: 22),
+            Text(
+              'Filiation',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            _parentButton(true),
+            const SizedBox(height: 8),
+            _parentButton(false),
+            const SizedBox(height: 16),
             TextFormField(
-              controller:
-                  _premierVelageController,
+              controller: _premierVelage,
               decoration: const InputDecoration(
-                labelText:
-                    'Premier vêlage',
-                hintText:
-                    'Ex. 3 ans et 2 mois',
-                prefixIcon:
-                    Icon(Icons.favorite_outline),
+                labelText: 'Premier vêlage',
                 border: OutlineInputBorder(),
               ),
             ),
-
-            const SizedBox(height: 20),
-
+            const SizedBox(height: 16),
             TextFormField(
-              controller: _notesController,
+              controller: _notes,
               maxLines: 5,
               decoration: const InputDecoration(
                 labelText: 'Notes',
-                hintText:
-                    'Observations concernant l’animal...',
-                prefixIcon:
-                    Icon(Icons.notes),
                 border: OutlineInputBorder(),
                 alignLabelWithHint: true,
               ),
             ),
-
-            const SizedBox(height: 30),
-
-            SizedBox(
-              height: 52,
-              child: FilledButton.icon(
-                onPressed:
-                    _saving ? null : _save,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child:
-                            CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(Icons.save),
-                label: Text(
-                  _saving
-                      ? 'Enregistrement...'
-                      : 'Enregistrer',
-                ),
-              ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save),
+              label: Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
             ),
           ],
         ),
