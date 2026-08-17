@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../models/animal.dart';
-import '../models/reproduction_event.dart';
 
 class ReproductionPerformanceCard extends StatefulWidget {
   const ReproductionPerformanceCard({super.key, required this.animal});
